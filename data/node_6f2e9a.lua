@@ -1,7 +1,7 @@
 -- REFTOOLS-MODULE-V1.0.0
--- Revision 2.0.0 | Native-traced actor Spirit +0xD0 and Injury +0x248; validated stat controls retained.
+-- Revision 2.1.0 | Clean developer controls: live health, spirit, injury, money, attributes, progress.
 -- Finds and validates runtime pointers before offering stat edits.
-local V='2.0.0'
+local V='2.1.0'
 local SIG='-1992893169D;-1946824447D;-268807205D;1873603068D::13'
 local SVAL={-1992893169,-1946824447,-268807205,1873603068}
 local F={{'health',0x76EA10,128},{'healthLimit',0x76EA14,132},{'spirit',0x76EA18,136},
@@ -116,17 +116,6 @@ local function status()
   return lamp(S.anchor~=nil)..' Xa  '..lamp(S.fields==6)..' fields  '..
          lamp(S.bank~=nil)..' money'
 end
-local function info()
-  local lines={'Reference Tools '..V,'Loaded from the existing fixed GitHub raw path','',status(),
-    'IL2CPP base: '..hx(S.base),'Character record: '..hx(S.star),
-    'Health address: '..hx(S.health),'Bank address: '..hx(S.bank),
-    lamp(S.healthOK)..' HUD health match',lamp(S.bankOK)..' HUD bank match',
-    '🔴 Spawning not mapped','',
-    'Validated memory pointers are not yet proven live gameplay controls.'}
-  for _,s in ipairs(S.issues) do lines[#lines+1]='- '..s end
-  gg.alert(table.concat(lines,'\n'))
-end
--- Availability means a validated, readable runtime address. It does NOT prove HUD effects.
 local function addrFor(kind)
   if kind=='bank' then return S.bank,gg.TYPE_DWORD end
   local offsets={health=0,healthLimit=4,spirit=8,injury=12}
@@ -163,16 +152,6 @@ local function verifyPointer(kind)
     end
   end
   return true
-end
-
-local function readDisplay(kind)
-  local addr,flag=addrFor(kind)
-  if not addr then gg.alert('🔴 Unavailable. Select Setup / Re-scan first.');return end
-  local val=read(addr,flag)
-  gg.alert((val~=nil and '🟢 ' or '🔴 ')..kind..
-          '\nCurrent candidate: '..tostring(val)..'\nAddress: '..hx(addr)..
-          '\nType: '..(flag==gg.TYPE_DWORD and 'Dword' or 'Float')..
-          '\nThis value is from the resolved runtime object. Confirm it in the game.')
 end
 
 local function edit(kind)
@@ -230,68 +209,13 @@ local function edit(kind)
            '\nNow verify the HUD/gameplay. A write readback is not proof of game effect.')
 end
 
-local function setupReport()
-  local lines={'SETUP / Xa + runtime pointers','',
-    '4 Xa DWORDs: '..(S.anchor and 'PASS' or 'FAIL'),
-    'Compiled field offsets: '..tostring(S.fields)..'/6',
-    'First Xa signature address: '..hx(S.anchor),
-    'IL2CPP module base: '..hx(S.base),'',
-    'GROUP READBACK:'}
-  if S.anchor then
-    for i,v in ipairs(SVAL) do
-      lines[#lines+1] = hx(S.anchor+4*(i-1))..' = '..tostring(D(S.anchor+4*(i-1)))..' (expected '..v..')'
-    end
-  else
-    lines[#lines+1]='Signature missing'
-  end
-  lines[#lines+1]=''
-  lines[#lines+1]='LIVE BINDINGS:'
-  for _,kind in ipairs({'health','healthLimit','spirit','injury','bank'}) do
-    local addr,flag=addrFor(kind)
-    lines[#lines+1]=lamp(canEdit(kind))..' '..kind..'  '..hx(addr)..'  = '..tostring(addr and read(addr,flag) or 'not found')
-  end
-  lines[#lines+1]=''
-  lines[#lines+1]='Green = readable, validated candidate address; gameplay effect unconfirmed.'
-  for _,e in ipairs(S.issues) do lines[#lines+1]='- '..e end
-  gg.alert(table.concat(lines,'\n'))
-end
-local function fieldInfo()
-  if not S.anchor then gg.alert('Xa unavailable');return end
-  local lines={'Verified compiled offsets (not live stats):'}
-  for _,f in ipairs(F) do
-    lines[#lines+1]=f[1]..' '..hx(S.anchor+f[2])..' => '..f[3]
-  end
-  gg.alert(table.concat(lines,'\n'))
-end
-local function spawnInfo()
-  gg.alert('🔴 Spawning not bound.\nStock fields: id +0x10, type +0x14, variant +0x18, location +0x2C, xyz +0x30/+0x34/+0x38.\nSaveData.stockFurniture +0x1A8, stockWeapons +0x1B0.\nThese are data layouts, NOT verified spawn calls. GameGuardian Lua cannot directly invoke an ARM64 IL2CPP function.')
-end
-
--- Binary-derived actor discovery, class EFPJKAPKGOB (0x02000032).
--- Manager LOCECKLDEDA (0x02000058) stores an actor[] at static +0x20.
--- Actor has a Character reference at +0x20; this is NOT its health offset.
-local FLOAT_OFF={
-  0x38,0x44,0x48,0x4C,0x50,0x54,0x58,0x5C,0x60,0x78,0x7C,0x80,0x84,0x88,0x8C,0x90,0x94,
-  0xB4,0xB8,0xBC,0xC0,0xC4,0xC8,0xCC,0xD0,0xD4,0xF0,0xF4,0x110,0x130,0x134,
-  0x150,0x154,0x158,0x15C,0x160,0x164,0x168,0x16C,0x170,0x188,0x18C,0x194,0x198,
-  0x1DC,0x1E4,0x1E8,0x1EC,0x1F0,0x1F4,0x210,0x220,0x224,0x228,0x244,0x25C,0x260,
-  0x280,0x28C,0x290,0x294,0x298,0x2A4,0x2A8,0x2D4,0x2D8,0x2DC,0x2E8,
-  0x2FC,0x300,0x304,0x318,0x328,0x32C,0x330,0x334,0x338,0x33C,0x35C,0x368,0x378,
-  0x3C8,0x3CC,0x3F0,0x3F4,0x3F8,0x3FC,0x400,0x404,0x408,0x40C,0x410,
-  0x414,0x418,0x41C,0x420,0x424,0x440,0x444,0x448,0x458,
-  0x460,0x464,0x468,0x470,0x474,0x478,0x47C,0x4A8,0x4AC,
-  0x4E0,0x4E4,0x4E8,0x4EC,0x4F0,0x4F4,0x504,0x50C,0x518,0x51C,0x520,
-  0x524,0x528,0x52C,0x530,0x558,0x55C,0x568,0x56C
-}
 local function actorOk()
   if not S.actor or not S.star or Q(S.actor+0x20)~=S.star then return false end
   local c=Q(S.actor)
   return c~=nil and D(c+0x11C)==C.EFPJKAPKGOB
 end
 local function actorScan(slow)
-  S.actor=nil;S.actorIndex=nil;S.baseline=nil;S.diff=nil
-  S.selected=nil;S.pending=nil;S.liveHealthOffset=nil;S.liveHealthConfirmed=false;S.limitPending=nil;S.limitConfirmed=false
-  S.characterPending=nil;S.characterConfirmed={}
+  S.actor=nil;S.actorIndex=nil;S.liveHealthOffset=nil;S.liveHealthConfirmed=false
   S.actorIssue=nil
   if not S.star then S.actorIssue='Character.cStar not initialized';return false end
   local manager=klass('LOCECKLDEDA',slow)
@@ -340,98 +264,9 @@ local function actorScan(slow)
   end
   return true
 end
-local function floats()
-  if not actorOk() then return nil end
-  local req={}
-  for i,o in ipairs(FLOAT_OFF) do req[i]={address=S.actor+o,flags=gg.TYPE_FLOAT} end
-  local got=batch(req)
-  if not got then return nil end
-  local result={}
-  for i,o in ipairs(FLOAT_OFF) do result[o]=got[i].value end
-  return result
-end
-local function snap()
-  local f=floats()
-  if not f then gg.alert('🔴 No active actor found. Use SETUP while playing.');return end
-  S.baseline={actor=S.actor,vals=f,dataHealth=R(S.star+0x80)}
-  S.diff=nil;S.selected=nil
-  gg.alert('Captured '..#FLOAT_OFF..' REAL actor Float fields.\n\nClose GG, take a little damage, then reopen GG and select COMPARE AFTER DAMAGE.\n\nNo memory was modified.')
-end
-local function compare()
-  if not S.baseline or not actorOk() or S.baseline.actor~=S.actor then
-    gg.alert('🔴 Baseline missing or player changed. Capture baseline again.');return end
-  local now=floats()
-  if not now then gg.alert('Cannot read live actor Floats');return end
-  local reference=R(S.star+0x80)
-  local delta=(reference and S.baseline.dataHealth) and reference-S.baseline.dataHealth or nil
-  local changed={}
-  for _,off in ipairs(FLOAT_OFF) do
-    local old,new=S.baseline.vals[off],now[off]
-    if old and new and old==old and new==new and old>0 and old<1000000 and new>=0 and new<1000000
-       and new<old-0.01 and old-new<100000 then
-      changed[#changed+1]={off=off,old=old,new=new,diff=new-old}
-    end
-  end
-  table.sort(changed,function(a,b)
-    if delta and delta<0 then
-      local x,y=math.abs(a.diff-delta),math.abs(b.diff-delta)
-      if x~=y then return x<y end
-    end
-    return math.abs(a.diff)>math.abs(b.diff)
-  end)
-  S.diff=changed
-  if #changed==0 then gg.alert('No actor Float values decreased. Try taking damage and compare again.');return end
-  local picks={}
-  for i=1,math.min(#changed,30) do
-    local v=changed[i]
-    picks[i]=hx(v.off)..' | '..string.format('%.2f -> %.2f (%.2f)',v.old,v.new,v.diff)
-  end
-  local choice=gg.choice(picks,nil,'Actor Float decreases: '..#changed..
-    '\nStored Character health delta: '..tostring(delta)..'\nPick one candidate to test')
-  if choice then S.selected=changed[choice]
-    gg.alert('Selected actor Float +'..hx(S.selected.off)..'.\nNot yet verified as live health.')
-  end
-end
-local function testSelected()
-  if not actorOk() or not S.selected then gg.alert('🔴 Compare actor Floats first.');return false end
-  if S.pending then gg.alert('Resolve pending test first.');return false end
-  local address=S.actor+S.selected.off
-  local old=R(address)
-  if not old then return false end
-  local q=gg.prompt({'Test value: actor +'..hx(S.selected.off)}, {[1]=tostring(old)}, {[1]='number'})
-  if not q then return false end
-  local val=tonumber(q[1])
-  if not val or val~=val or val<0 or val>1000000 or math.abs(val-old)<0.05 then
-    gg.alert('Enter a different finite Float from 0 to 1,000,000.');return false end
-  local ok,err=pcall(gg.setValues,{{address=address,flags=gg.TYPE_FLOAT,value=tostring(val)}})
-  if not ok or err==false then gg.alert('Write failed: '..tostring(err));return false end
-  S.pending={actor=S.actor,off=S.selected.off,old=old}
-  gg.alert('Test value written to actor +'..hx(S.selected.off)..
-     '.\nClose GG, check the HEALTH METER in-game, then reopen GG and choose CONFIRM / RESTORE.')
-  return true
-end
-local function confirmTest()
-  local t=S.pending
-  if not t then gg.alert('No pending test.');return end
-  if not actorOk() or S.actor~=t.actor then
-    S.pending=nil;gg.alert('Actor changed; original address cannot be safely restored.');return end
-  local choice=gg.choice({'YES — live health meter changed','NO — restore original value','UNSURE — restore original value'},
-    nil,'Did modifying actor +'..hx(t.off)..' change the HEALTH METER?')
-  if not choice then return end
-  if choice==1 then
-    S.liveHealthOffset=t.off;S.liveHealthConfirmed=true
-    S.pending=nil
-    gg.alert('🟢 Live health offset accepted for this session: +'..hx(t.off)..
-      '\nReport this hex offset so it can be reviewed and made permanent.')
-  else
-    local ok,e=pcall(gg.setValues,{{address=S.actor+t.off,flags=gg.TYPE_FLOAT,value=tostring(t.old)}})
-    S.pending=nil
-    gg.alert(ok and e~=false and 'Original Float restored.' or 'Restore failed: '..tostring(e))
-  end
-end
 local function editLive()
   if not S.liveHealthConfirmed or not actorOk() then
-    gg.alert('🔴 Live health not confirmed. Use snapshot and candidate test.');return end
+    gg.alert('🔴 Live health unavailable. Run SETUP / RE-SCAN.');return end
   local addr=S.actor+S.liveHealthOffset
   local old=R(addr)
   if not old then gg.alert('Health address unreadable.');return end
@@ -447,6 +282,7 @@ end
 -- Derived from Character.stat at +0x70 (Float array). Published PC mod uses
 -- ChangeStat(1..6): Reputation, Strength, Skill, Agility, Stamina, Attitude.
 -- Individual Android edits have not yet been confirmed by in-game testing.
+-- Verified in gameplay: Reputation, Strength, Skill, Agility, Stamina, Attitude.
 local STATS={
   {name='Reputation',index=1},{name='Strength',index=2},
   {name='Skill',index=3},{name='Agility',index=4},
@@ -511,8 +347,6 @@ local function statMenu()
   end
 end
 
--- Progress offsets come from the v1.1.8 compiled field-offset table.
--- Sentence is modified directly by the public PC cheat; direct Android write still needs HUD validation.
 local function progressExtras()
   if not S.anchor or D(S.anchor+0x76EBE8)~=0x4C then
     gg.alert('Progress.sentence offset check failed. Run SETUP.');return end
@@ -559,281 +393,6 @@ local function progressExtras()
   end
 end
 
-local function testLimit()
-  if not actorOk() or not S.anchor or D(S.anchor+0x76F348)~=0xB8 then
-    gg.alert('Actor or compiled +0xB8 offset unavailable. Re-scan in gameplay.');return
-  end
-  local addr=S.actor+0xB8
-  if S.limitPending then
-    local p=S.limitPending
-    if p.actor~=S.actor then S.limitPending=nil;gg.alert('Actor changed; restore target no longer safe.');return end
-    local choice=gg.choice({'YES: capacity changed visibly (keep)','NO/UNSURE: restore original'},nil,'Confirm actor health-limit +0xB8 test')
-    if not choice then return end
-    if choice==2 then
-      local ok,r=pcall(gg.setValues,{{address=addr,flags=gg.TYPE_FLOAT,value=tostring(p.old)}})
-      if not ok or r==false then gg.alert('Restore failed: '..tostring(r));return end
-      S.limitConfirmed=false
-    else
-      S.limitConfirmed=true
-    end
-    S.limitPending=nil
-    gg.alert('Actor limit readback '..tostring(R(addr))..'; visual confirmation: '..tostring(S.limitConfirmed))
-    return
-  end
-  local old,health=R(addr),R(S.actor+0xB4)
-  if not old or old~=old or old<=0 or old>1000000 or not health or health~=health then
-    gg.alert('Limit/health sanity checks failed.');return
-  end
-  local action=gg.choice({'READ only','TEST change (reversible)','Cancel'},nil,
-    'Actor +0xB8: '..tostring(old)..' (Float32; static health-limit field)\nCurrent health: '..tostring(health)..'\nHUD effect NOT verified')
-  if action~=2 then return end
-  local q=gg.prompt({'New test health limit (>= current health)'},{[1]=tostring(old)},{[1]='number'})
-  if not q then return end
-  local v=tonumber(q[1])
-  if not v or v~=v or v<math.max(1,health) or v>1000000 or math.abs(v-old)<0.05 then
-    gg.alert('Enter a different finite limit between current health and 1,000,000.');return
-  end
-  local ok,r=pcall(gg.setValues,{{address=addr,flags=gg.TYPE_FLOAT,value=tostring(v)}})
-  if not ok or r==false then gg.alert('Write failed: '..tostring(r));return end
-  S.limitPending={actor=S.actor,old=old}
-  gg.alert('Test readback: '..tostring(R(addr))..
-    '\nCheck visible health capacity in-game; reopen TEST ACTOR MAX HEALTH to confirm or restore.')
-end
-
--- Source verified (Android v1.1.8): Character.spirit field #234 Float32 +0x88,
--- injury #235 Int32 +0x8C, injuryTime #236 Int32 +0x90, dead #237 Int32 +0x94,
--- absent #238 Int32 +0x98. Their live gameplay authority is NOT assumed.
-local CHAR_FIELDS={
-  {name='Spirit',key='spirit',offset=0x88,entry=0x76EA18,flags=gg.TYPE_FLOAT,minimum=0,maximum=1000},
-  {name='Injury',key='injury',offset=0x8C,entry=0x76EA1C,flags=gg.TYPE_DWORD,minimum=0,maximum=1000},
-  {name='Injury time',key='injuryTime',offset=0x90,entry=0x76EA20,flags=gg.TYPE_DWORD,minimum=0,maximum=36525},
-  {name='Dead state',key='dead',offset=0x94,entry=0x76EA24,flags=gg.TYPE_DWORD,minimum=0,maximum=1},
-  {name='Absent state',key='absent',offset=0x98,entry=0x76EA28,flags=gg.TYPE_DWORD,minimum=0,maximum=1},
-}
-local function characterFieldMenu()
-  if not actorOk() or not S.star or not S.anchor then
-    gg.alert('No validated active character. SETUP / RE-SCAN during gameplay.');return end
-  local items={}
-  for _,f in ipairs(CHAR_FIELDS) do
-    if D(S.anchor+f.entry)~=f.offset then
-      gg.alert('Compiled '..f.name..' field offset mismatch. No edits offered.');return end
-    items[#items+1]=f.name..' (Character +'..hx(f.offset)..') = '..tostring(read(S.star+f.offset,f.flags))
-  end
-  items[#items+1]='Back'
-  local pick=gg.choice(items,nil,'Character-record fields verified in IL2CPP; Spirit/Injury did not alter gameplay in prior test.\nAll 5 are experimental; dead/absent writes could change scenes, state or stability.')
-  if not pick or pick>#CHAR_FIELDS then return end
-  local f=CHAR_FIELDS[pick]
-  local valid=verifyPointer('health')
-  if not valid or not actorOk() or D(S.anchor+f.entry)~=f.offset then
-    gg.alert('Active Character reference changed or field-offset check failed. Re-scan.');return end
-  local addr=S.star+f.offset
-  local current=read(addr,f.flags)
-  if not current then gg.alert('Field is unreadable.');return end
-  local pending=S.characterPending
-  if pending then
-    if pending.addr~=addr or pending.key~=f.key or pending.actor~=S.actor then
-      gg.alert('A different Character field edit is pending. Reopen that field to confirm or restore.');return end
-    local choice=gg.choice({'YES — in-game character state visibly changed','NO / UNSURE — restore previous value'},nil,
-      f.name..' test: old='..tostring(pending.old)..' current='..tostring(current))
-    if not choice then return end
-    if choice==2 then
-      local ok,res=pcall(gg.setValues,{{address=addr,flags=f.flags,value=tostring(pending.old)}})
-      if not ok or res==false then gg.alert('Restore FAILED: '..tostring(res));return end
-      S.characterConfirmed[f.key]=false
-    else
-      S.characterConfirmed[f.key]=true
-    end
-    S.characterPending=nil
-    gg.alert(f.name..' readback: '..tostring(read(addr,f.flags))..
-      '\nGameplay-confirmed this session: '..tostring(S.characterConfirmed[f.key]==true)..
-      '\nPersistence after restart remains a separate test.')
-    return
-  end
-  if f.key=='dead' or f.key=='absent' then
-    local confirm=gg.choice({'Continue with experimental write','Cancel'},nil,
-      'WARNING: '..f.name..' may trigger game-state changes or a crash. No crash-free guarantee. Test with a recoverable save.')
-    if confirm~=1 then return end
-  end
-  local q=gg.prompt({'EXPERIMENTAL '..f.name..' (0–'..f.maximum..')'},{[1]=tostring(current)},{[1]='number'})
-  if not q then return end
-  local v=tonumber(q[1])
-  if not v or v~=v or v<f.minimum or v>f.maximum or v==current or
-      (f.flags==gg.TYPE_DWORD and v~=math.floor(v)) then
-    gg.alert('Enter a different '..(f.flags==gg.TYPE_DWORD and 'integer' or 'finite number')..
-      ' from '..f.minimum..' to '..f.maximum..'.');return end
-  local ok,res=pcall(gg.setValues,{{address=addr,flags=f.flags,value=tostring(v)}})
-  if not ok or res==false then gg.alert('Write failed: '..tostring(res));return end
-  local actual=read(addr,f.flags)
-  if not actual or (f.flags==gg.TYPE_DWORD and actual~=v) then
-    gg.alert('Write readback mismatch; inspect manually before further edits.');return end
-  S.characterPending={key=f.key,addr=addr,actor=S.actor,old=current}
-  gg.alert(f.name..' wrote '..tostring(v)..' and reads '..tostring(actual)..
-    '\nCheck the visible in-game effect, then reopen SPIRIT / INJURY to confirm or restore.')
-end
-
-local function nearbyActor()
-  if not actorOk() then gg.alert('No live actor. Run Setup during gameplay.');return end
-  local lines={'Live actor: '..hx(S.actor),'',
-    '🟢 +0xB4 health = '..tostring(R(S.actor+0xB4)),
-    '🟡 +0xB8 health-limit candidate = '..tostring(R(S.actor+0xB8)),
-    'Nearby Float fields; meanings NOT verified:'}
-  for _,off in ipairs({0xBC,0xC0,0xC4,0xC8,0xCC,0xD0,0xD4}) do
-    lines[#lines+1]='🔴 +'..hx(off)..' = '..tostring(R(S.actor+off))
-  end
-  lines[#lines+1]=''
-  lines[#lines+1]='+0xB8 is the statically mapped actor health limit; its HUD behavior still needs testing. Other neighbors have unknown meanings.'
-  gg.alert(table.concat(lines,'\n'))
-end
-local function liveReport()
-  local arr,vals,statErr=statArray()
-  local lines={
-    'Reference Tools '..V,
-    'Xa signature: '..lamp(S.anchor~=nil)..' '..hx(S.anchor),
-    'Compiled 6/6: '..lamp(S.fields==6),
-    'Active actor: '..lamp(actorOk())..' '..hx(S.actor),
-    'Live health +0xB4: '..lamp(S.liveHealthConfirmed and actorOk())..
-       ' '..tostring(actorOk() and R(S.actor+0xB4) or 'unavailable'),
-    'Actor health-limit +0xB8: '..tostring(actorOk() and R(S.actor+0xB8) or 'unavailable')..' | visual test: '..tostring(S.limitConfirmed==true),
-    'Native-traced actor Spirit +0xD0 (x10): '..tostring(actorOk() and R(S.actor+0xD0) or 'unavailable'),
-    'Native-traced actor Injury +0x248 (Dword): '..tostring(actorOk() and D(S.actor+0x248) or 'unavailable'),
-    'Character spirit +0x88 (stored, test): '..tostring(S.star and R(S.star+0x88) or 'unavailable')..
-      ' | gameplay confirmed: '..tostring(S.characterConfirmed and S.characterConfirmed.spirit==true),
-    'Character injury +0x8C (stored, test): '..tostring(S.star and D(S.star+0x8C) or 'unavailable')..
-      ' | gameplay confirmed: '..tostring(S.characterConfirmed and S.characterConfirmed.injury==true),
-    'Money Progress.bank: '..lamp(canEdit('bank'))..
-       ' '..tostring(S.bank and D(S.bank) or 'unavailable'),
-    'Attributes Float array: '..lamp(arr~=nil)..' '..hx(arr),
-    'Sentence: '..tostring(S.classes.Progress and
-       S.classes.Progress.storage and D(S.classes.Progress.storage+0x4C) or 'unavailable'),
-    'Stats: '..tostring(arr and 'array index 1-6 mapped; HUD effects unconfirmed' or statErr),
-    '',
-    'The stored Character.health +0x80 is a separate record; editing it did NOT affect live gameplay.',
-    'Actor +0xB8 is statically identified as health-limit. Actor +0xD0 / +0x248 have ARM64 Character->actor write traces; direct editing remains unverified.'
-  }
-  if S.actorIssue then lines[#lines+1]='Actor diagnostic: '..tostring(S.actorIssue) end
-  gg.alert(table.concat(lines,'\n'))
-end
-
--- Scene-transition investigation. No writes to unknown memory.
--- Capture in one room; enter another room; choose Compare to rebind and review changes.
-local ROOM_REPORT=nil
-local function githubUpload()
-  if not ROOM_REPORT then gg.alert('No report yet. Run room comparison first.');return end
-  local action=gg.choice({'Upload report to public GitHub issue #1','Cancel'},nil,
-    'This publishes memory addresses publicly. You need a fine-grained GitHub token with Issues write on dotxden-gamehub. The token will not be stored.')
-  if action~=1 then return end
-  local p=gg.prompt({'GitHub token (not saved)'},{[1]=''},{[1]='text'})
-  if not p then return end
-  local token=p[1] or ''
-  if #token<20 or #token>300 or token:find('%s') then
-    gg.alert('Invalid token. Nothing uploaded.');return end
-  local content='HT3 Reference Tools '..V..' room-transition report\n\n'..ROOM_REPORT
-  local escaped=content:gsub('\\','\\\\'):gsub('"','\\"'):gsub('\n','\\n'):gsub('\r','\\r'):gsub('\t','\\t')
-  local data='{"body":"'..escaped..'"}'
-  local headers={['Authorization']='Bearer '..token,['Accept']='application/vnd.github+json',
-    ['Content-Type']='application/json',['User-Agent']='HT3-ReferenceTools'}
-  local ok,res=pcall(gg.makeRequest,
-    'https://api.github.com/repos/ezduzitag-droid/dotxden-gamehub/issues/1/comments',headers,data)
-  token=nil;p=nil;headers=nil
-  if not ok or type(res)~='table' or res.error or res.code~=201 then
-    gg.alert('Upload failed. HTTP '..tostring(type(res)=='table' and res.code or 'network error')..
-      '. Report retained in session. Retry using the same menu.')
-    return
-  end
-  gg.alert('REPORT UPLOADED to https://github.com/ezduzitag-droid/dotxden-gamehub/issues/1')
-end
-
-local ROOM_SNAPSHOT=nil
-local function actorFloatSnapshot()
-  if not actorOk() then return nil end
-  local req,offs={},{}
-  for off=0xA0,0x220,4 do
-    req[#req+1]={address=S.actor+off,flags=gg.TYPE_FLOAT}
-    offs[#offs+1]=off
-  end
-  local values=batch(req)
-  if not values then return nil end
-  local result={}
-  for i,v in ipairs(values) do
-    local n=tonumber(v.value)
-    if n and n==n and math.abs(n)<1e7 then result[offs[i]]=n end
-  end
-  return result
-end
-local function roomTrace()
-  local mode=gg.choice({
-    '1 CAPTURE live actor before changing rooms',
-    '2 COMPARE after changing rooms (re-scan)',
-    '3 UPLOAD / RETRY GitHub report',
-    'Back'
-  },nil,'Read-only room transition diagnostic: compare live actor Floats and stored Character state.')
-  if mode==1 then
-    if not actorOk() then gg.alert('Enter gameplay and run SETUP / RE-SCAN first.');return end
-    local vals=actorFloatSnapshot()
-    if not vals then gg.alert('Could not capture actor Floats.');return end
-    ROOM_SNAPSHOT={actor=S.actor,values=vals,spirit=R(S.star+0x88),
-      injury=D(S.star+0x8C),injuryTime=D(S.star+0x90)}
-    gg.alert('Captured live actor '..hx(S.actor)..
-      '\nCharacter spirit='..tostring(ROOM_SNAPSHOT.spirit)..
-      ', injury='..tostring(ROOM_SNAPSHOT.injury)..
-      '\nNow enter another room and choose COMPARE.')
-  elseif mode==3 then
-    githubUpload()
-  elseif mode==2 then
-    if not ROOM_SNAPSHOT then gg.alert('No capture. Capture before changing rooms.');return end
-    bind(false);actorScan(false)
-    if not actorOk() then gg.alert('No active actor after room transition. Run setup in gameplay.');return end
-    local after=actorFloatSnapshot()
-    if not after then gg.alert('Unable to read actor after room transition.');return end
-    local old=ROOM_SNAPSHOT
-    local spirit=R(S.star+0x88)
-    local changes={}
-    local nearSpirit={}
-    for off=0xA0,0x220,4 do
-      local a=old.values[off]
-      local b=after[off]
-      if a and b then
-        local delta=b-a
-        if math.abs(delta)>0.01 then
-          changes[#changes+1]={off=off,old=a,new=b,delta=math.abs(delta)}
-        end
-        if spirit and math.abs(b-spirit)<1 then
-          nearSpirit[#nearSpirit+1]='+'..hx(off)..'='..string.format('%.2f',b)
-        end
-      end
-    end
-    table.sort(changes,function(x,y)return x.delta>y.delta end)
-    local out={
-      'READ-ONLY room-transition comparison',
-      'Actor before '..hx(old.actor)..' -> after '..hx(S.actor),
-      'Stored spirit '..tostring(old.spirit)..' -> '..tostring(spirit),
-      'Stored injury '..tostring(old.injury)..' -> '..tostring(D(S.star+0x8C)),
-      'Stored injuryTime '..tostring(old.injuryTime)..' -> '..tostring(D(S.star+0x90)),
-      'Changed actor Floats: '..tostring(#changes),
-      'Top differences (UNIDENTIFIED, NOT safe edit targets):'
-    }
-    for i=1,math.min(16,#changes) do
-      local x=changes[i]
-      out[#out+1]='+'..hx(x.off)..' '..string.format('%.2f -> %.2f',x.old,x.new)
-    end
-    out[#out+1]='Values near stored spirit (coincidence possible):'
-    for i=1,math.min(12,#nearSpirit) do out[#out+1]=nearSpirit[i] end
-    out[#out+1]='This comparison does not prove field ownership. Report values and visible meter.'
-    ROOM_REPORT=table.concat(out,'\n')
-    gg.alert(ROOM_REPORT)
-    githubUpload()
-  end
-end
-
--- Confirmed static ARM64 dataflow for Android v1.1.8:
--- EFPJKAPKGOB actor [x19+0x20] -> Character
--- 0x162AE3C reads Character.spirit +0x88 (Float32)
--- 0x162AE48 multiplies by 10; 0x162AE50 writes actor +0xD0.
--- 0x162AB24 reads Character.injury +0x8C (Int32)
--- 0x162AB2C writes actor +0x248.
--- Actor field-offset table: Xa+0x76F360=>0xD0; Xa+0x76F484=>0x248.
--- These are observed code paths; live gameplay control of direct edits is UNVERIFIED.
-local LIVE_STATE_PENDING=nil
 local LIVE_STATE={
   {name='Spirit',offset=0xD0,tableEntry=0x76F360,flags=gg.TYPE_FLOAT,
     sourceOffset=0x88,sourceFlag=gg.TYPE_FLOAT,scale=10,min=0,max=100},
@@ -842,119 +401,79 @@ local LIVE_STATE={
 }
 local function liveStateMenu()
   if not actorOk() or not S.anchor then
-    gg.alert('No valid actor. Run SETUP / RE-SCAN in gameplay.');return end
-  local names={}
+    gg.alert('No valid player. Run SETUP / RE-SCAN.');return end
+  local items={}
   for _,f in ipairs(LIVE_STATE) do
     if D(S.anchor+f.tableEntry)~=f.offset then
-      gg.alert('Native '..f.name..' actor-field entry mismatch. No writes permitted.');return end
-    local runtime=read(S.actor+f.offset,f.flags)
-    local record=read(S.star+f.sourceOffset,f.sourceFlag)
-    names[#names+1]=f.name..': actor +'..hx(f.offset)..' = '..tostring(runtime)..
-      ' / '..tostring(f.scale)..' | Character record = '..tostring(record)
+      gg.alert('Game build does not match '..f.name..' mapping.');return end
+    local raw=read(S.actor+f.offset,f.flags)
+    items[#items+1]='EDIT '..f.name..' = '..tostring(raw and raw/f.scale or 'unavailable')
   end
-  names[#names+1]='Back'
-  local choice=gg.choice(names,nil,
-    'Android native code traces Character -> active actor for both fields.'..
-    '\nSpirit is scaled x10 in actor memory. Effects of DIRECT actor edits require a HUD test.')
+  items[#items+1]='Back'
+  local choice=gg.choice(items,nil,'Player state — live actor')
   if not choice or choice>#LIVE_STATE then return end
   local f=LIVE_STATE[choice]
   if not actorOk() or D(S.anchor+f.tableEntry)~=f.offset then
-    gg.alert('Actor changed or compiled field check failed. Re-scan.');return end
+    gg.alert('Player changed. Run SETUP / RE-SCAN.');return end
   local addr=S.actor+f.offset
   local old=read(addr,f.flags)
-  if old==nil or old~=old then gg.alert('Unreadable actor field.');return end
-  if LIVE_STATE_PENDING then
-    local p=LIVE_STATE_PENDING
-    if p.actor~=S.actor or p.addr~=addr then
-      gg.alert('Another test is pending. Reopen its menu entry to confirm or restore.');return end
-    local answer=gg.choice({'YES: visible gameplay state changed (keep)','NO/UNSURE: restore previous actor value'},nil,
-      f.name..' pending test. Old raw='..tostring(p.old)..', current raw='..tostring(old))
-    if not answer then return end
-    if answer==2 then
-      local ok,res=pcall(gg.setValues,{{address=addr,flags=f.flags,value=tostring(p.old)}})
-      if not ok or res==false then gg.alert('RESTORE FAILED: '..tostring(res));return end
-    end
-    LIVE_STATE_PENDING=nil
-    gg.alert(f.name..' actor readback='..tostring(read(addr,f.flags))..
-      '\nResult: '..(answer==1 and 'reported VISIBLE CHANGE' or 'original restored')..
-      '\nRoom-transition persistence is a separate test.')
-    return
-  end
-  local q=gg.prompt({'New '..f.name..' displayed units ('..f.min..'-'..f.max..')'},
+  if old==nil or old~=old then gg.alert('Current value unavailable.');return end
+  local q=gg.prompt({'New '..f.name..' ('..f.min..'-'..f.max..')'},
     {[1]=tostring(old/f.scale)},{[1]='number'})
   if not q then return end
   local v=tonumber(q[1])
-  if not v or v~=v or v<f.min or v>f.max or
-    (f.flags==gg.TYPE_DWORD and v~=math.floor(v)) then
-    gg.alert('Invalid '..f.name..' value; no memory modified.');return end
-  local raw=v*f.scale
-  if math.abs(raw-old)<0.01 then gg.alert('Choose a different value.');return end
+  if not v or v~=v or v==math.huge or v==-math.huge or
+     v<f.min or v>f.max or (f.flags==gg.TYPE_DWORD and v~=math.floor(v)) then
+    gg.alert('Invalid value.');return end
   if not actorOk() or D(S.anchor+f.tableEntry)~=f.offset then
-    gg.alert('Actor changed. Re-scan before editing.');return end
-  local ok,res=pcall(gg.setValues,{{address=addr,flags=f.flags,value=tostring(raw)}})
-  if not ok or res==false then gg.alert('Write failed: '..tostring(res));return end
-  local now=read(addr,f.flags)
-  if now==nil or math.abs(now-raw)>0.02 then
-    gg.alert('Write readback did not match. Stop further testing and report.');return end
-  LIVE_STATE_PENDING={actor=S.actor,addr=addr,old=old}
-  gg.alert('Actor '..f.name..' direct test: '..tostring(old)..' -> '..tostring(now)..
-    '\nCheck in-game HUD / injury behavior, then reopen LIVE SPIRIT / INJURY to CONFIRM or RESTORE.'..
-    '\nThe Character record remains unchanged by this direct actor write.')
+    gg.alert('Player pointer changed. Re-scan.');return end
+  local raw=v*f.scale
+  local ok,result=pcall(gg.setValues,{{address=addr,flags=f.flags,value=tostring(raw)}})
+  if not ok or result==false then gg.alert('Write failed.');return end
+  local actual=read(addr,f.flags)
+  if actual==nil or math.abs(actual-raw)>0.03 then
+    gg.alert('Readback mismatch; value not confirmed.');return end
+  gg.toast(f.name..' = '..tostring(v))
 end
 
+local function refresh()
+  bind(false)
+  actorScan(false)
+  return actorOk() and S.anchor~=nil and S.fields==6
+end
 local function menu()
   while true do
-    local statPtr=statArray()
-    local liveHealth=S.liveHealthConfirmed and actorOk()
     local n=gg.choice({
-      '⚙ SETUP / RE-SCAN (Xa + live actor)',
-      lamp(liveHealth)..' EDIT LIVE HEALTH — actor +0xB4',
-      lamp(canEdit('bank'))..' EDIT MONEY — Progress.bank',
-      lamp(statPtr~=nil)..' EDIT ATTRIBUTES — reputation, strength, skill, agility, stamina, attitude',
-      '🟡 EDIT SENTENCE / CLOCK / ALLOWANCE — Progress static fields',
-      '🟡 EDIT CHARACTER STATE (stored; room-resets)',
-      '🟡 TEST NATIVE-TRACED ACTOR SPIRIT / INJURY (+0xD0 / +0x248)',
-      '🟡 TEST ACTOR MAX HEALTH (+0xB8; reversible)',
-      '🛈 CHECK neighboring LIVE actor Floats (+0xBC through +0xD4)',
-      '🛈 STATUS — paths and live values',
-      '🛈 Stored Character data (not live health)',
-      '① Capture actor Float baseline (optional research)',
-      '② Compare actor Floats after damage (optional research)',
-      '🔍 COMPARE actor before/after room transition (read-only)',
-      '🔴 Item spawning — not in this milestone',
-      '↻ EXTENDED setup including O (slower)',
-      '✕ Exit'
-    },nil,'Reference Tools '..V..'\n'..status()..
-       '\nGreen=address resolved. Player-stat HUD effects require testing.')
-    if not n then return true end
-    if n==1 or n==16 then
-      bind(n==16);actorScan(n==16);LIVE_STATE_PENDING=nil;liveReport()
+      'SETUP / RE-SCAN',
+      'EDIT HEALTH',
+      'EDIT SPIRIT / INJURY',
+      'EDIT ATTRIBUTES',
+      'EDIT MONEY',
+      'EDIT SENTENCE / DAY / CLOCK / ALLOWANCE',
+      'EXIT'
+    },nil,'Hard Time III — Developer Controls v'..V)
+    if not n or n==7 then return false end
+    if n==1 then
+      gg.toast(refresh() and 'Player linked' or 'Player not ready; enter gameplay and re-scan')
     elseif n==2 then editLive()
-    elseif n==3 then edit('bank')
+    elseif n==3 then liveStateMenu()
     elseif n==4 then statMenu()
-    elseif n==5 then progressExtras()
-    elseif n==6 then characterFieldMenu()
-    elseif n==7 then liveStateMenu()
-    elseif n==8 then testLimit()
-    elseif n==9 then nearbyActor()
-    elseif n==10 then liveReport()
-    elseif n==11 then gg.alert('Stored Character.health +0x80: '..tostring(S.health and R(S.health))..
-      '\nStored Character.healthLimit +0x84: '..tostring(S.health and R(S.health+4))..
-      '\nStored Character.spirit +0x88: '..tostring(S.health and R(S.health+8))..
-      '\nStored Character.injury +0x8C (Int32): '..tostring(S.health and D(S.health+12))..
-       '\nStored fields are separate from live actor +0xB4 health.')
-    elseif n==12 then snap()
-    elseif n==13 then compare()
-    elseif n==14 then roomTrace()
-    elseif n==15 then gg.alert('Item spawning is excluded from this revision as requested.')
-    else return false end
+    elseif n==5 then edit('bank')
+    elseif n==6 then progressExtras()
+    end
   end
 end
-if type(gg)~='table' or type(gg.searchNumber)~='function' then error('GG environment required') end
-bind(false);actorScan(false);gg.setVisible(false)
-gg.toast('Reference Tools '..V..': '..status())
+if type(gg)~='table' or type(gg.searchNumber)~='function' then
+  error('GameGuardian environment required')
+end
+refresh()
+gg.setVisible(false)
+gg.toast('Hard Time III Developer Controls v'..V)
 if not menu() then return end
 while true do
-  if gg.isVisible() then gg.setVisible(false);if not menu() then break end end
+  if gg.isVisible() then
+    gg.setVisible(false)
+    if not menu() then break end
+  end
   gg.sleep(200)
 end
