@@ -1,7 +1,7 @@
 -- REFTOOLS-MODULE-V1.0.0
--- Revision 1.7.0 | Verified actor health +0xB4; canonical stat-array controls; money preserved.
+-- Revision 1.8.0 | Verified actor health +0xB4; canonical stat-array controls; money preserved.
 -- Finds and validates runtime pointers before offering stat edits.
-local V='1.7.0'
+local V='1.8.0'
 local SIG='-1992893169D;-1946824447D;-268807205D;1873603068D::13'
 local SVAL={-1992893169,-1946824447,-268807205,1873603068}
 local F={{'health',0x76EA10,128},{'healthLimit',0x76EA14,132},{'spirit',0x76EA18,136},
@@ -712,6 +712,85 @@ local function liveReport()
   gg.alert(table.concat(lines,'\n'))
 end
 
+-- Scene-transition investigation. No writes to unknown memory.
+-- Capture in one room; enter another room; choose Compare to rebind and review changes.
+local ROOM_SNAPSHOT=nil
+local function actorFloatSnapshot()
+  if not actorOk() then return nil end
+  local req,offs={},{}
+  for off=0xA0,0x220,4 do
+    req[#req+1]={address=S.actor+off,flags=gg.TYPE_FLOAT}
+    offs[#offs+1]=off
+  end
+  local values=batch(req)
+  if not values then return nil end
+  local result={}
+  for i,v in ipairs(values) do
+    local n=tonumber(v.value)
+    if n and n==n and math.abs(n)<1e7 then result[offs[i]]=n end
+  end
+  return result
+end
+local function roomTrace()
+  local mode=gg.choice({
+    '1 CAPTURE live actor before changing rooms',
+    '2 COMPARE after changing rooms (re-scan)',
+    'Back'
+  },nil,'Read-only room transition diagnostic: compare live actor Floats and stored Character state.')
+  if mode==1 then
+    if not actorOk() then gg.alert('Enter gameplay and run SETUP / RE-SCAN first.');return end
+    local vals=actorFloatSnapshot()
+    if not vals then gg.alert('Could not capture actor Floats.');return end
+    ROOM_SNAPSHOT={actor=S.actor,values=vals,spirit=R(S.star+0x88),
+      injury=D(S.star+0x8C),injuryTime=D(S.star+0x90)}
+    gg.alert('Captured live actor '..hx(S.actor)..
+      '\nCharacter spirit='..tostring(ROOM_SNAPSHOT.spirit)..
+      ', injury='..tostring(ROOM_SNAPSHOT.injury)..
+      '\nNow enter another room and choose COMPARE.')
+  elseif mode==2 then
+    if not ROOM_SNAPSHOT then gg.alert('No capture. Capture before changing rooms.');return end
+    bind(false);actorScan(false)
+    if not actorOk() then gg.alert('No active actor after room transition. Run setup in gameplay.');return end
+    local after=actorFloatSnapshot()
+    if not after then gg.alert('Unable to read actor after room transition.');return end
+    local old=ROOM_SNAPSHOT
+    local spirit=R(S.star+0x88)
+    local changes={}
+    local nearSpirit={}
+    for off=0xA0,0x220,4 do
+      local a=old.values[off]
+      local b=after[off]
+      if a and b then
+        local delta=b-a
+        if math.abs(delta)>0.01 then
+          changes[#changes+1]={off=off,old=a,new=b,delta=math.abs(delta)}
+        end
+        if spirit and math.abs(b-spirit)<1 then
+          nearSpirit[#nearSpirit+1]='+'..hx(off)..'='..string.format('%.2f',b)
+        end
+      end
+    end
+    table.sort(changes,function(x,y)return x.delta>y.delta end)
+    local out={
+      'READ-ONLY room-transition comparison',
+      'Actor before '..hx(old.actor)..' -> after '..hx(S.actor),
+      'Stored spirit '..tostring(old.spirit)..' -> '..tostring(spirit),
+      'Stored injury '..tostring(old.injury)..' -> '..tostring(D(S.star+0x8C)),
+      'Stored injuryTime '..tostring(old.injuryTime)..' -> '..tostring(D(S.star+0x90)),
+      'Changed actor Floats: '..tostring(#changes),
+      'Top differences (UNIDENTIFIED, NOT safe edit targets):'
+    }
+    for i=1,math.min(16,#changes) do
+      local x=changes[i]
+      out[#out+1]='+'..hx(x.off)..' '..string.format('%.2f -> %.2f',x.old,x.new)
+    end
+    out[#out+1]='Values near stored spirit (coincidence possible):'
+    for i=1,math.min(12,#nearSpirit) do out[#out+1]=nearSpirit[i] end
+    out[#out+1]='This comparison does not prove field ownership. Report values and visible meter.'
+    gg.alert(table.concat(out,'\n'))
+  end
+end
+
 local function menu()
   while true do
     local statPtr=statArray()
@@ -729,14 +808,15 @@ local function menu()
       '🛈 Stored Character data (not live health)',
       '① Capture actor Float baseline (optional research)',
       '② Compare actor Floats after damage (optional research)',
+      '🔍 COMPARE actor before/after room transition (read-only)',
       '🔴 Item spawning — not in this milestone',
       '↻ EXTENDED setup including O (slower)',
       '✕ Exit'
     },nil,'Reference Tools '..V..'\n'..status()..
        '\nGreen=address resolved. Player-stat HUD effects require testing.')
     if not n then return true end
-    if n==1 or n==14 then
-      bind(n==14);actorScan(n==14);liveReport()
+    if n==1 or n==15 then
+      bind(n==15);actorScan(n==15);liveReport()
     elseif n==2 then editLive()
     elseif n==3 then edit('bank')
     elseif n==4 then statMenu()
@@ -752,7 +832,8 @@ local function menu()
        '\nStored fields are separate from live actor +0xB4 health.')
     elseif n==11 then snap()
     elseif n==12 then compare()
-    elseif n==13 then gg.alert('Item spawning is excluded from this revision as requested.')
+    elseif n==13 then roomTrace()
+    elseif n==14 then gg.alert('Item spawning is excluded from this revision as requested.')
     else return false end
   end
 end
