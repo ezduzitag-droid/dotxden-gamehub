@@ -304,7 +304,7 @@ local function actorScan(slow)
   for i=0,math.min(n,256)-1 do req[#req+1]={address=array+0x20+i*8,flags=gg.TYPE_QWORD} end
   local list=batch(req)
   if not list then S.actorIssue='Player pointer array unreadable';return false end
-  local ptrReq={}, indices={}
+  local ptrReq,indices={},{}
   for i,v in ipairs(list) do
     if v.value and v.value>0x10000 then
       ptrReq[#ptrReq+1]={address=v.value+0x20,flags=gg.TYPE_QWORD}
