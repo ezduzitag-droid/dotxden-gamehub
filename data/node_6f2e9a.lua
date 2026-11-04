@@ -714,183 +714,31 @@ end
 
 -- Scene-transition investigation. No writes to unknown memory.
 -- Capture in one room; enter another room; choose Compare to rebind and review changes.
--- GitHub report sink: issue #1, no secrets bundled with this public script.
-local REPORT_ISSUE_URL='https://api.github.com/repos/ezduzitag-droid/dotxden-gamehub/issues/1/comments'
-local LAST_ROOM_REPORT=nil
-local function jsonEscape(s)
-  return (tostring(s):gsub('\\','\\\\'):gsub('"','\\"'):gsub('\b','\\b')
-    :gsub('\f','\\f'):gsub('\n','\\n'):gsub('\r','\\r'):gsub('\t','\\t')
-    :gsub('[%z\1-\31]',function(ch)return string.format('\\u%04x',ch:byte()) end))
-end
-local function sendRoomReport(report)
-  if type(report)~='string' or #report<40 then gg.alert('No completed report is available.');return false end
-  local proceed=gg.choice({'UPLOAD report to PUBLIC GitHub issue #1','Cancel'},nil,
-    'Only the diagnostic text is uploaded. Actor memory addresses will become publicly visible in the repository.\nA fine-grained GitHub token is required each script session. The token is never saved or included in report.')
-  if proceed~=1 then return false end
-  local input=gg.prompt({'Fine-grained GitHub token (Issues: Read and write on this repository)'},{[1]=''},{[1]='text'})
-  if not input then return false end
-  local token=tostring(input[1] or ''):match('^%s*(.-)%s*
-local function actorFloatSnapshot()
-  if not actorOk() then return nil end
-  local req,offs={},{}
-  for off=0xA0,0x220,4 do
-    req[#req+1]={address=S.actor+off,flags=gg.TYPE_FLOAT}
-    offs[#offs+1]=off
-  end
-  local values=batch(req)
-  if not values then return nil end
-  local result={}
-  for i,v in ipairs(values) do
-    local n=tonumber(v.value)
-    if n and n==n and math.abs(n)<1e7 then result[offs[i]]=n end
-  end
-  return result
-end
-local function roomTrace()
-  local mode=gg.choice({
-    '1 CAPTURE live actor before changing rooms',
-    '2 COMPARE after changing rooms (re-scan)',
-    '3 RETRY uploading last report to GitHub',
-    'Back'
-  },nil,'Read-only room transition diagnostic: compare live actor Floats and stored Character state.')
-  if mode==1 then
-    if not actorOk() then gg.alert('Enter gameplay and run SETUP / RE-SCAN first.');return end
-    local vals=actorFloatSnapshot()
-    if not vals then gg.alert('Could not capture actor Floats.');return end
-    ROOM_SNAPSHOT={actor=S.actor,values=vals,spirit=R(S.star+0x88),
-      injury=D(S.star+0x8C),injuryTime=D(S.star+0x90)}
-    gg.alert('Captured live actor '..hx(S.actor)..
-      '\nCharacter spirit='..tostring(ROOM_SNAPSHOT.spirit)..
-      ', injury='..tostring(ROOM_SNAPSHOT.injury)..
-      '\nNow enter another room and choose COMPARE.')
-  elseif mode==3 then
-    sendRoomReport(LAST_ROOM_REPORT)
-  elseif mode==2 then
-    if not ROOM_SNAPSHOT then gg.alert('No capture. Capture before changing rooms.');return end
-    bind(false);actorScan(false)
-    if not actorOk() then gg.alert('No active actor after room transition. Run setup in gameplay.');return end
-    local after=actorFloatSnapshot()
-    if not after then gg.alert('Unable to read actor after room transition.');return end
-    local old=ROOM_SNAPSHOT
-    local spirit=R(S.star+0x88)
-    local changes={}
-    local nearSpirit={}
-    for off=0xA0,0x220,4 do
-      local a=old.values[off]
-      local b=after[off]
-      if a and b then
-        local delta=b-a
-        if math.abs(delta)>0.01 then
-          changes[#changes+1]={off=off,old=a,new=b,delta=math.abs(delta)}
-        end
-        if spirit and math.abs(b-spirit)<1 then
-          nearSpirit[#nearSpirit+1]='+'..hx(off)..'='..string.format('%.2f',b)
-        end
-      end
-    end
-    table.sort(changes,function(x,y)return x.delta>y.delta end)
-    local out={
-      'READ-ONLY room-transition comparison',
-      'Actor before '..hx(old.actor)..' -> after '..hx(S.actor),
-      'Stored spirit '..tostring(old.spirit)..' -> '..tostring(spirit),
-      'Stored injury '..tostring(old.injury)..' -> '..tostring(D(S.star+0x8C)),
-      'Stored injuryTime '..tostring(old.injuryTime)..' -> '..tostring(D(S.star+0x90)),
-      'Changed actor Floats: '..tostring(#changes),
-      'Top differences (UNIDENTIFIED, NOT safe edit targets):'
-    }
-    for i=1,math.min(16,#changes) do
-      local x=changes[i]
-      out[#out+1]='+'..hx(x.off)..' '..string.format('%.2f -> %.2f',x.old,x.new)
-    end
-    out[#out+1]='Values near stored spirit (coincidence possible):'
-    for i=1,math.min(12,#nearSpirit) do out[#out+1]=nearSpirit[i] end
-    out[#out+1]='This comparison does not prove field ownership. Report values and visible meter.'
-    LAST_ROOM_REPORT=table.concat(out,'\n')
-    gg.alert(LAST_ROOM_REPORT)
-    sendRoomReport(LAST_ROOM_REPORT)
-  end
-end
-
-local function menu()
-  while true do
-    local statPtr=statArray()
-    local liveHealth=S.liveHealthConfirmed and actorOk()
-    local n=gg.choice({
-      '⚙ SETUP / RE-SCAN (Xa + live actor)',
-      lamp(liveHealth)..' EDIT LIVE HEALTH — actor +0xB4',
-      lamp(canEdit('bank'))..' EDIT MONEY — Progress.bank',
-      lamp(statPtr~=nil)..' EDIT ATTRIBUTES — reputation, strength, skill, agility, stamina, attitude',
-      '🟡 EDIT SENTENCE / CLOCK / ALLOWANCE — Progress static fields',
-      '🟡 EDIT CHARACTER STATE (spirit, injury, injury time, dead, absent)',
-      '🟡 TEST ACTOR MAX HEALTH (+0xB8; reversible)',
-      '🛈 CHECK neighboring LIVE actor Floats (+0xBC through +0xD4)',
-      '🛈 STATUS — paths and live values',
-      '🛈 Stored Character data (not live health)',
-      '① Capture actor Float baseline (optional research)',
-      '② Compare actor Floats after damage (optional research)',
-      '🔍 COMPARE actor before/after room transition (read-only)',
-      '🔴 Item spawning — not in this milestone',
-      '↻ EXTENDED setup including O (slower)',
-      '✕ Exit'
-    },nil,'Reference Tools '..V..'\n'..status()..
-       '\nGreen=address resolved. Player-stat HUD effects require testing.')
-    if not n then return true end
-    if n==1 or n==15 then
-      bind(n==15);actorScan(n==15);liveReport()
-    elseif n==2 then editLive()
-    elseif n==3 then edit('bank')
-    elseif n==4 then statMenu()
-    elseif n==5 then progressExtras()
-    elseif n==6 then characterFieldMenu()
-    elseif n==7 then testLimit()
-    elseif n==8 then nearbyActor()
-    elseif n==9 then liveReport()
-    elseif n==10 then gg.alert('Stored Character.health +0x80: '..tostring(S.health and R(S.health))..
-      '\nStored Character.healthLimit +0x84: '..tostring(S.health and R(S.health+4))..
-      '\nStored Character.spirit +0x88: '..tostring(S.health and R(S.health+8))..
-      '\nStored Character.injury +0x8C (Int32): '..tostring(S.health and D(S.health+12))..
-       '\nStored fields are separate from live actor +0xB4 health.')
-    elseif n==11 then snap()
-    elseif n==12 then compare()
-    elseif n==13 then roomTrace()
-    elseif n==14 then gg.alert('Item spawning is excluded from this revision as requested.')
-    else return false end
-  end
-end
-if type(gg)~='table' or type(gg.searchNumber)~='function' then error('GG environment required') end
-bind(false);actorScan(false);gg.setVisible(false)
-gg.toast('Reference Tools '..V..': '..status())
-if not menu() then return end
-while true do
-  if gg.isVisible() then gg.setVisible(false);if not menu() then break end end
-  gg.sleep(200)
-end
-)
-  if #token<20 or #token>300 or token:find('%s') or not (token:match('^github_pat_') or token:match('^ghp_')) then
-    gg.alert('Invalid token format. No upload attempted. Create a fine-grained token for dotxden-gamehub with Issues read/write.');return false end
-  local body='## Hard Time III room-transition diagnostic (RefTools '..V..')\n\n```text\n'..
-    report:gsub('```','[code fence removed]')..'\n```'
-  local payload='{"body":"'..jsonEscape(body)..'"}'
-  local headers={
-    ['Authorization']='Bearer '..token,
-    ['Accept']='application/vnd.github+json',
-    ['Content-Type']='application/json',
-    ['X-GitHub-Api-Version']='2022-11-28',
-    ['User-Agent']='HT3-ReferenceTools'
-  }
-  local ok,res=pcall(gg.makeRequest,REPORT_ISSUE_URL,headers,payload)
-  -- Never print the token or request headers, including on failure.
-  token=nil;headers=nil;input=nil
+local ROOM_REPORT=nil
+local function githubUpload()
+  if not ROOM_REPORT then gg.alert('No report yet. Run room comparison first.');return end
+  local action=gg.choice({'Upload report to public GitHub issue #1','Cancel'},nil,
+    'This publishes memory addresses publicly. You need a fine-grained GitHub token with Issues write on dotxden-gamehub. The token will not be stored.')
+  if action~=1 then return end
+  local p=gg.prompt({'GitHub token (not saved)'},{[1]=''},{[1]='text'})
+  if not p then return end
+  local token=p[1] or ''
+  if #token<20 or #token>300 or token:find('%s') then
+    gg.alert('Invalid token. Nothing uploaded.');return end
+  local content='HT3 Reference Tools '..V..' room-transition report\n\n'..ROOM_REPORT
+  local escaped=content:gsub('\\','\\\\'):gsub('"','\\"'):gsub('\n','\\n'):gsub('\r','\\r'):gsub('\t','\\t')
+  local data='{"body":"'..escaped..'"}'
+  local headers={['Authorization']='Bearer '..token,['Accept']='application/vnd.github+json',
+    ['Content-Type']='application/json',['User-Agent']='HT3-ReferenceTools'}
+  local ok,res=pcall(gg.makeRequest,
+    'https://api.github.com/repos/ezduzitag-droid/dotxden-gamehub/issues/1/comments',headers,data)
+  token=nil;p=nil;headers=nil
   if not ok or type(res)~='table' or res.error or res.code~=201 then
-    gg.alert('GitHub upload NOT confirmed. HTTP '..tostring(type(res)=='table' and res.code or 'network error')..
-      '. Report kept in this script session; choose RETRY LAST REPORT.')
-    return false
+    gg.alert('Upload failed. HTTP '..tostring(type(res)=='table' and res.code or 'network error')..
+      '. Report retained in session. Retry using the same menu.')
+    return
   end
-  local id=res.content and res.content:match('"id"%s*:%s*(%d+)') or nil
-  gg.alert('Report published to GitHub issue #1. HTTP 201'..
-    (id and ('\nComment ID: '..id) or '')..
-    '\nhttps://github.com/ezduzitag-droid/dotxden-gamehub/issues/1')
-  return true
+  gg.alert('REPORT UPLOADED to https://github.com/ezduzitag-droid/dotxden-gamehub/issues/1')
 end
 
 local ROOM_SNAPSHOT=nil
@@ -914,6 +762,7 @@ local function roomTrace()
   local mode=gg.choice({
     '1 CAPTURE live actor before changing rooms',
     '2 COMPARE after changing rooms (re-scan)',
+    '3 UPLOAD / RETRY GitHub report',
     'Back'
   },nil,'Read-only room transition diagnostic: compare live actor Floats and stored Character state.')
   if mode==1 then
@@ -926,6 +775,8 @@ local function roomTrace()
       '\nCharacter spirit='..tostring(ROOM_SNAPSHOT.spirit)..
       ', injury='..tostring(ROOM_SNAPSHOT.injury)..
       '\nNow enter another room and choose COMPARE.')
+  elseif mode==3 then
+    githubUpload()
   elseif mode==2 then
     if not ROOM_SNAPSHOT then gg.alert('No capture. Capture before changing rooms.');return end
     bind(false);actorScan(false)
@@ -966,7 +817,9 @@ local function roomTrace()
     out[#out+1]='Values near stored spirit (coincidence possible):'
     for i=1,math.min(12,#nearSpirit) do out[#out+1]=nearSpirit[i] end
     out[#out+1]='This comparison does not prove field ownership. Report values and visible meter.'
-    gg.alert(table.concat(out,'\n'))
+    ROOM_REPORT=table.concat(out,'\n')
+    gg.alert(ROOM_REPORT)
+    githubUpload()
   end
 end
 
