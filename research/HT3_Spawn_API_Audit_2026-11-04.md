@@ -44,3 +44,30 @@ A GameGuardian memory address/value editor does not inherently call arbitrary AR
 - Original Android XAPK uploaded in chat; extracted `global-metadata.dat`, `libil2cpp.so`.
 - `HT3_Android_Method_Inventory.csv` and `HT3_Spawn_Candidate_Inventory.csv` generated in this turn.
 - No gameplay test, spawn execution, or APK edit claimed.
+
+## Native follow-up: registration and actual callers (supersedes earlier 'unresolved pointer')
+A subsequent direct binary trace **resolved** the method pointers using the `Assembly-CSharp.dll` codegen module:
+- String virtual address `0x74E1B1`; image codegen module at `0x3087018`.
+- Module declares **2,004** method slots; relocated native method-pointer table at **`0x3240EF0`**.
+- `IFCBDBGCKJA.CGLILJCFENK` / token `0x06000112` / index 273 → **RVA `0x1530160`**.
+- `IFCBDBGCKJA.HBALMHCPLKM` / token `0x06000101` / index 256 → **RVA `0x1526114`**.
+- `IFCBDBGCKJA.AKKIOODJGNM` / token `0x0600010F` / index 270 → **RVA `0x152604C`**.
+- `Stock.LDOCDJOFJCN` / token `0x06000467` / index 1126 → **RVA `0x1659270`**.
+
+Native execution path in static disassembly:
+1. At `0x15301D8`, the positioned method calls `0x1526114` with `(type, 0)`, receiving a managed stock index.
+2. It checks bounds/index and follows the manager's object pointer array.
+3. At `0x1530228` and `0x153023C`–`0x1530258`, it writes three position floats, orientation, and scale-related values into the selected object. It returns the chosen index.
+4. `0x1526114` checks whether a type is allowed, creates/extends the manager's object array, adjusts its length/count, and initializes an object. It is the actual creation/registration layer, not merely a metadata match.
+5. `0x152604C` checks the incoming type and dynamic stock count; its comparisons include `0x48` (72) and additional conditional branches. This is not a proof that all integers from 1 to any one hardcoded maximum are usable.
+
+**Actual Android call-site evidence of numeric inputs:**
+- `GDICAFINBED.IBIlCPMOIKN` (method index 1617, token `0x06000652`) at **`0x16F4F74`** and **`0x16F4FAC`** loads integer **83** immediately before calling `0x1530160` at **`0x16F4F8C`** and **`0x16F4FC4`**.
+- At **`0x16F4FC8`** it passes **88** and **91** to the range-selection function `0x1679BBC`, then passes the selected return as the first parameter to `0x1530160` at **`0x16F5020`**.
+- The actor caller `EFPJKAPKGOB.CKHFEGNHFJP` similarly uses **83** and a selected **88–91** in its two direct calls to `0x1530160` at `0x15A97A8` and `0x15A9858`.
+- These Android native ID arguments match the same numbers in the independent PC mod. **83 and the 88–91 range are statically verified Android spawn arguments**. Their visible object labels, pickup/usage and exact effects still need actual runtime confirmation. They must not be relabeled as a general weapon catalog without that evidence.
+- Eight direct native call sites for `CGLILJCFENK` were observed, belonging to those two identified caller methods. This establishes the genuine factory/caller path.
+
+### Revised requested gate 1 and gate 2
+Gate 1: **static factory + native call chain resolved** for positioned weapon/stock creation. Directly invoking it from GG remains unresolved. Gate 2: **Android code-confirmed argument values 83 and 88–91**, and **PC-only argument 0** for random Add; **furniture ID still unresolved**. No in-game spawn or pickup result has been claimed.
+
