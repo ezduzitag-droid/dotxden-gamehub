@@ -1,7 +1,7 @@
 -- REFTOOLS-MODULE-V1.0.0
--- Revision 1.5.0 | Verified actor health +0xB4; canonical stat-array controls; money preserved.
+-- Revision 1.6.0 | Verified actor health +0xB4; canonical stat-array controls; money preserved.
 -- Finds and validates runtime pointers before offering stat edits.
-local V='1.5.0'
+local V='1.6.0'
 local SIG='-1992893169D;-1946824447D;-268807205D;1873603068D::13'
 local SVAL={-1992893169,-1946824447,-268807205,1873603068}
 local F={{'health',0x76EA10,128},{'healthLimit',0x76EA14,132},{'spirit',0x76EA18,136},
@@ -291,6 +291,7 @@ end
 local function actorScan(slow)
   S.actor=nil;S.actorIndex=nil;S.baseline=nil;S.diff=nil
   S.selected=nil;S.pending=nil;S.liveHealthOffset=nil;S.liveHealthConfirmed=false;S.limitPending=nil;S.limitConfirmed=false
+  S.characterPending=nil;S.characterConfirmed={}
   S.actorIssue=nil
   if not S.star then S.actorIssue='Character.cStar not initialized';return false end
   local manager=klass('LOCECKLDEDA',slow)
@@ -601,6 +602,74 @@ local function testLimit()
     '\nCheck visible health capacity in-game; reopen TEST ACTOR MAX HEALTH to confirm or restore.')
 end
 
+-- Source verified (Android v1.1.8): Character.spirit field #234 Float32 +0x88,
+-- injury #235 Int32 +0x8C, injuryTime #236 Int32 +0x90, dead #237 Int32 +0x94,
+-- absent #238 Int32 +0x98. Their live gameplay authority is NOT assumed.
+local CHAR_FIELDS={
+  {name='Spirit',key='spirit',offset=0x88,entry=0x76EA18,flags=gg.TYPE_FLOAT,minimum=0,maximum=1000},
+  {name='Injury',key='injury',offset=0x8C,entry=0x76EA1C,flags=gg.TYPE_DWORD,minimum=0,maximum=1000},
+}
+local function characterFieldMenu()
+  if not actorOk() or not S.star or not S.anchor then
+    gg.alert('No validated active character. SETUP / RE-SCAN during gameplay.');return end
+  local items={}
+  for _,f in ipairs(CHAR_FIELDS) do
+    if D(S.anchor+f.entry)~=f.offset then
+      gg.alert('Compiled '..f.name..' field offset mismatch. No edits offered.');return end
+    items[#items+1]=f.name..' (Character +'..hx(f.offset)..') = '..tostring(read(S.star+f.offset,f.flags))
+  end
+  for _,info in ipairs({{'Injury time',0x90,0x76EA20},{'Dead state',0x94,0x76EA24},{'Absent state',0x98,0x76EA28}}) do
+    if D(S.anchor+info[3])~=info[2] then
+      gg.alert('Compiled '..info[1]..' offset mismatch. No edits offered.');return end
+    items[#items+1]='READ ONLY '..info[1]..' = '..tostring(D(S.star+info[2]))
+  end
+  items[#items+1]='Back'
+  local pick=gg.choice(items,nil,'Spirit and injury — Character record, NOT proven live controller.\nGreen confirmation requires visible gameplay effect.')
+  if not pick or pick>2 then return end
+  local f=CHAR_FIELDS[pick]
+  local valid=verifyPointer('health')
+  if not valid or not actorOk() or D(S.anchor+f.entry)~=f.offset then
+    gg.alert('Active Character reference changed or field-offset check failed. Re-scan.');return end
+  local addr=S.star+f.offset
+  local current=read(addr,f.flags)
+  if not current then gg.alert('Field is unreadable.');return end
+  local pending=S.characterPending
+  if pending then
+    if pending.addr~=addr or pending.key~=f.key or pending.actor~=S.actor then
+      gg.alert('A different Spirit/Injury edit is pending. Reopen that field to confirm or restore.');return end
+    local choice=gg.choice({'YES — in-game character state visibly changed','NO / UNSURE — restore previous value'},nil,
+      f.name..' test: old='..tostring(pending.old)..' current='..tostring(current))
+    if not choice then return end
+    if choice==2 then
+      local ok,res=pcall(gg.setValues,{{address=addr,flags=f.flags,value=tostring(pending.old)}})
+      if not ok or res==false then gg.alert('Restore FAILED: '..tostring(res));return end
+      S.characterConfirmed[f.key]=false
+    else
+      S.characterConfirmed[f.key]=true
+    end
+    S.characterPending=nil
+    gg.alert(f.name..' readback: '..tostring(read(addr,f.flags))..
+      '\nGameplay-confirmed this session: '..tostring(S.characterConfirmed[f.key]==true)..
+      '\nPersistence after restart remains a separate test.')
+    return
+  end
+  local q=gg.prompt({'TEST '..f.name..' (0–'..f.maximum..')'},{[1]=tostring(current)},{[1]='number'})
+  if not q then return end
+  local v=tonumber(q[1])
+  if not v or v~=v or v<f.minimum or v>f.maximum or v==current or
+      (f.flags==gg.TYPE_DWORD and v~=math.floor(v)) then
+    gg.alert('Enter a different '..(f.flags==gg.TYPE_DWORD and 'integer' or 'finite number')..
+      ' from '..f.minimum..' to '..f.maximum..'.');return end
+  local ok,res=pcall(gg.setValues,{{address=addr,flags=f.flags,value=tostring(v)}})
+  if not ok or res==false then gg.alert('Write failed: '..tostring(res));return end
+  local actual=read(addr,f.flags)
+  if not actual or (f.flags==gg.TYPE_DWORD and actual~=v) then
+    gg.alert('Write readback mismatch; inspect manually before further edits.');return end
+  S.characterPending={key=f.key,addr=addr,actor=S.actor,old=current}
+  gg.alert(f.name..' wrote '..tostring(v)..' and reads '..tostring(actual)..
+    '\nCheck the visible in-game effect, then reopen SPIRIT / INJURY to confirm or restore.')
+end
+
 local function nearbyActor()
   if not actorOk() then gg.alert('No live actor. Run Setup during gameplay.');return end
   local lines={'Live actor: '..hx(S.actor),'',
@@ -624,6 +693,10 @@ local function liveReport()
     'Live health +0xB4: '..lamp(S.liveHealthConfirmed and actorOk())..
        ' '..tostring(actorOk() and R(S.actor+0xB4) or 'unavailable'),
     'Actor health-limit +0xB8: '..tostring(actorOk() and R(S.actor+0xB8) or 'unavailable')..' | visual test: '..tostring(S.limitConfirmed==true),
+    'Character spirit +0x88 (stored, test): '..tostring(S.star and R(S.star+0x88) or 'unavailable')..
+      ' | gameplay confirmed: '..tostring(S.characterConfirmed and S.characterConfirmed.spirit==true),
+    'Character injury +0x8C (stored, test): '..tostring(S.star and D(S.star+0x8C) or 'unavailable')..
+      ' | gameplay confirmed: '..tostring(S.characterConfirmed and S.characterConfirmed.injury==true),
     'Money Progress.bank: '..lamp(canEdit('bank'))..
        ' '..tostring(S.bank and D(S.bank) or 'unavailable'),
     'Attributes Float array: '..lamp(arr~=nil)..' '..hx(arr),
@@ -648,6 +721,7 @@ local function menu()
       lamp(canEdit('bank'))..' EDIT MONEY — Progress.bank',
       lamp(statPtr~=nil)..' EDIT ATTRIBUTES — reputation, strength, skill, agility, stamina, attitude',
       '🟡 SENTENCE / CLOCK / ALLOWANCE — Progress static fields',
+      '🟡 TEST SPIRIT / INJURY (Character +0x88 / +0x8C)',
       '🟡 TEST ACTOR MAX HEALTH (+0xB8; reversible)',
       '🛈 CHECK neighboring LIVE actor Floats (+0xBC through +0xD4)',
       '🛈 STATUS — paths and live values',
@@ -660,23 +734,24 @@ local function menu()
     },nil,'Reference Tools '..V..'\n'..status()..
        '\nGreen=address resolved. Player-stat HUD effects require testing.')
     if not n then return true end
-    if n==1 or n==13 then
-      bind(n==13);actorScan(n==13);liveReport()
+    if n==1 or n==14 then
+      bind(n==14);actorScan(n==14);liveReport()
     elseif n==2 then editLive()
     elseif n==3 then edit('bank')
     elseif n==4 then statMenu()
     elseif n==5 then progressExtras()
-    elseif n==6 then testLimit()
-    elseif n==7 then nearbyActor()
-    elseif n==8 then liveReport()
-    elseif n==9 then gg.alert('Stored Character.health +0x80: '..tostring(S.health and R(S.health))..
+    elseif n==6 then characterFieldMenu()
+    elseif n==7 then testLimit()
+    elseif n==8 then nearbyActor()
+    elseif n==9 then liveReport()
+    elseif n==10 then gg.alert('Stored Character.health +0x80: '..tostring(S.health and R(S.health))..
       '\nStored Character.healthLimit +0x84: '..tostring(S.health and R(S.health+4))..
       '\nStored Character.spirit +0x88: '..tostring(S.health and R(S.health+8))..
       '\nStored Character.injury +0x8C (Int32): '..tostring(S.health and D(S.health+12))..
        '\nStored fields are separate from live actor +0xB4 health.')
-    elseif n==10 then snap()
-    elseif n==11 then compare()
-    elseif n==12 then gg.alert('Item spawning is excluded from this revision as requested.')
+    elseif n==11 then snap()
+    elseif n==12 then compare()
+    elseif n==13 then gg.alert('Item spawning is excluded from this revision as requested.')
     else return false end
   end
 end
