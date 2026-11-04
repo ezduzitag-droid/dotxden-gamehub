@@ -1,12 +1,12 @@
 -- REFTOOLS-MODULE-V1.0.0
--- Revision 1.2.0 | Setup-first and pointer-availability based editing; remote path unchanged.
+-- Revision 1.3.0 | Live actor investigation; preserved confirmed money edit.
 -- Finds and validates runtime pointers before offering stat edits.
-local V='1.2.0'
+local V='1.3.0'
 local SIG='-1992893169D;-1946824447D;-268807205D;1873603068D::13'
 local SVAL={-1992893169,-1946824447,-268807205,1873603068}
 local F={{'health',0x76EA10,128},{'healthLimit',0x76EA14,132},{'spirit',0x76EA18,136},
          {'injury',0x76EA1C,140},{'bank',0x76EBD4,56},{'cStar',0x770FBC,32}}
-local C={Progress=0x02000015,Characters=0x020000AB,Character=0x02000008}
+local C={Progress=0x02000015,Characters=0x020000AB,Character=0x02000008,LOCECKLDEDA=0x02000058,EFPJKAPKGOB=0x02000032}
 local S={anchor=nil,base=nil,fields=0,classes={},health=nil,bank=nil,star=nil,
          healthOK=false,bankOK=false,issues={}}
 local function hx(n) return n and string.format('0x%X',n) or 'none' end
@@ -135,6 +135,7 @@ local function addrFor(kind)
 end
 
 local function canEdit(kind)
+  if kind~='bank' then return false end -- Character data was NOT the live controller in tests.
   local addr,kindFlag=addrFor(kind)
   if not addr or not S.anchor or S.fields~=6 then return false end
   if (kind=='bank' and not S.classes.Progress) or
@@ -175,6 +176,7 @@ local function readDisplay(kind)
 end
 
 local function edit(kind)
+  if kind~='bank' then gg.alert('🔴 Stored Character health is not live. Use the active actor probe.');return end
   if not canEdit(kind) then gg.alert('🔴 '..kind..' is unavailable. Run Setup / Re-scan.');return end
   local valid,reason=verifyPointer(kind)
   if not valid then
@@ -264,51 +266,217 @@ end
 local function spawnInfo()
   gg.alert('🔴 Spawning not bound.\nStock fields: id +0x10, type +0x14, variant +0x18, location +0x2C, xyz +0x30/+0x34/+0x38.\nSaveData.stockFurniture +0x1A8, stockWeapons +0x1B0.\nThese are data layouts, NOT verified spawn calls. GameGuardian Lua cannot directly invoke an ARM64 IL2CPP function.')
 end
+
+-- Binary-derived actor discovery, class EFPJKAPKGOB (0x02000032).
+-- Manager LOCECKLDEDA (0x02000058) stores an actor[] at static +0x20.
+-- Actor has a Character reference at +0x20; this is NOT its health offset.
+local FLOAT_OFF={
+  0x38,0x44,0x48,0x4C,0x50,0x54,0x58,0x5C,0x60,0x78,0x7C,0x80,0x84,0x88,0x8C,0x90,0x94,
+  0xB4,0xB8,0xBC,0xC0,0xC4,0xC8,0xCC,0xD0,0xD4,0xF0,0xF4,0x110,0x130,0x134,
+  0x150,0x154,0x158,0x15C,0x160,0x164,0x168,0x16C,0x170,0x188,0x18C,0x194,0x198,
+  0x1DC,0x1E4,0x1E8,0x1EC,0x1F0,0x1F4,0x210,0x220,0x224,0x228,0x244,0x25C,0x260,
+  0x280,0x28C,0x290,0x294,0x298,0x2A4,0x2A8,0x2D4,0x2D8,0x2DC,0x2E8,
+  0x2FC,0x300,0x304,0x318,0x328,0x32C,0x330,0x334,0x338,0x33C,0x35C,0x368,0x378,
+  0x3C8,0x3CC,0x3F0,0x3F4,0x3F8,0x3FC,0x400,0x404,0x408,0x40C,0x410,
+  0x414,0x418,0x41C,0x420,0x424,0x440,0x444,0x448,0x458,
+  0x460,0x464,0x468,0x470,0x474,0x478,0x47C,0x4A8,0x4AC,
+  0x4E0,0x4E4,0x4E8,0x4EC,0x4F0,0x4F4,0x504,0x50C,0x518,0x51C,0x520,
+  0x524,0x528,0x52C,0x530,0x558,0x55C,0x568,0x56C
+}
+local function actorOk()
+  if not S.actor or not S.star or Q(S.actor+0x20)~=S.star then return false end
+  local c=Q(S.actor)
+  return c~=nil and D(c+0x11C)==C.EFPJKAPKGOB
+end
+local function actorScan(slow)
+  S.actor=nil;S.actorIndex=nil;S.baseline=nil;S.diff=nil
+  S.selected=nil;S.pending=nil;S.liveHealthOffset=nil;S.liveHealthConfirmed=false
+  S.actorIssue=nil
+  if not S.star then S.actorIssue='Character.cStar not initialized';return false end
+  local manager=klass('LOCECKLDEDA',slow)
+  if not manager or not manager.storage or manager.storage<0x10000 then
+    S.actorIssue='Player array manager not found';return false end
+  local array=Q(manager.storage+0x20)
+  local n=array and Q(array+0x18) or nil
+  if not n or n<1 or n>512 or math.floor(n)~=n then
+    S.actorIssue='No valid runtime player array. Enter gameplay.';return false end
+  local req={}
+  for i=0,math.min(n,256)-1 do req[#req+1]={address=array+0x20+i*8,flags=gg.TYPE_QWORD} end
+  local list=batch(req)
+  if not list then S.actorIssue='Player pointer array unreadable';return false end
+  local ptrReq={}, indices={}
+  for i,v in ipairs(list) do
+    if v.value and v.value>0x10000 then
+      ptrReq[#ptrReq+1]={address=v.value+0x20,flags=gg.TYPE_QWORD}
+      indices[#indices+1]=i-1
+    end
+  end
+  if #ptrReq==0 then S.actorIssue='Empty player array';return false end
+  local chars=batch(ptrReq)
+  if not chars then S.actorIssue='Player Character references unreadable';return false end
+  local found={}
+  for i,v in ipairs(chars) do
+    if v.value==S.star then
+      local obj=ptrReq[i].address-0x20
+      local cl=Q(obj)
+      if cl and D(cl+0x11C)==C.EFPJKAPKGOB then
+        found[#found+1]={obj=obj,index=indices[i]}
+      end
+    end
+  end
+  if #found~=1 then
+    S.actorIssue='Matching active actor instances: '..#found..' (expected 1)'
+    return false
+  end
+  S.actor=found[1].obj;S.actorIndex=found[1].index
+  return true
+end
+local function floats()
+  if not actorOk() then return nil end
+  local req={}
+  for i,o in ipairs(FLOAT_OFF) do req[i]={address=S.actor+o,flags=gg.TYPE_FLOAT} end
+  local got=batch(req)
+  if not got then return nil end
+  local result={}
+  for i,o in ipairs(FLOAT_OFF) do result[o]=got[i].value end
+  return result
+end
+local function snap()
+  local f=floats()
+  if not f then gg.alert('🔴 No active actor found. Use SETUP while playing.');return end
+  S.baseline={actor=S.actor,vals=f,dataHealth=R(S.star+0x80)}
+  S.diff=nil;S.selected=nil
+  gg.alert('Captured '..#FLOAT_OFF..' REAL actor Float fields.\n\nClose GG, take a little damage, then reopen GG and select COMPARE AFTER DAMAGE.\n\nNo memory was modified.')
+end
+local function compare()
+  if not S.baseline or not actorOk() or S.baseline.actor~=S.actor then
+    gg.alert('🔴 Baseline missing or player changed. Capture baseline again.');return end
+  local now=floats()
+  if not now then gg.alert('Cannot read live actor Floats');return end
+  local reference=R(S.star+0x80)
+  local delta=(reference and S.baseline.dataHealth) and reference-S.baseline.dataHealth or nil
+  local changed={}
+  for _,off in ipairs(FLOAT_OFF) do
+    local old,new=S.baseline.vals[off],now[off]
+    if old and new and old==old and new==new and old>0 and old<1000000 and new>=0 and new<1000000
+       and new<old-0.01 and old-new<100000 then
+      changed[#changed+1]={off=off,old=old,new=new,diff=new-old}
+    end
+  end
+  table.sort(changed,function(a,b)
+    if delta and delta<0 then
+      local x,y=math.abs(a.diff-delta),math.abs(b.diff-delta)
+      if x~=y then return x<y end
+    end
+    return math.abs(a.diff)>math.abs(b.diff)
+  end)
+  S.diff=changed
+  if #changed==0 then gg.alert('No actor Float values decreased. Try taking damage and compare again.');return end
+  local picks={}
+  for i=1,math.min(#changed,30) do
+    local v=changed[i]
+    picks[i]=hx(v.off)..' | '..string.format('%.2f -> %.2f (%.2f)',v.old,v.new,v.diff)
+  end
+  local choice=gg.choice(picks,nil,'Actor Float decreases: '..#changed..
+    '\nStored Character health delta: '..tostring(delta)..'\nPick one candidate to test')
+  if choice then S.selected=changed[choice]
+    gg.alert('Selected actor Float +'..hx(S.selected.off)..'.\nNot yet verified as live health.')
+  end
+end
+local function testSelected()
+  if not actorOk() or not S.selected then gg.alert('🔴 Compare actor Floats first.');return false end
+  if S.pending then gg.alert('Resolve pending test first.');return false end
+  local address=S.actor+S.selected.off
+  local old=R(address)
+  if not old then return false end
+  local q=gg.prompt({'Test value: actor +'..hx(S.selected.off)}, {[1]=tostring(old)}, {[1]='number'})
+  if not q then return false end
+  local val=tonumber(q[1])
+  if not val or val~=val or val<0 or val>1000000 or math.abs(val-old)<0.05 then
+    gg.alert('Enter a different finite Float from 0 to 1,000,000.');return false end
+  local ok,err=pcall(gg.setValues,{{address=address,flags=gg.TYPE_FLOAT,value=tostring(val)}})
+  if not ok or err==false then gg.alert('Write failed: '..tostring(err));return false end
+  S.pending={actor=S.actor,off=S.selected.off,old=old}
+  gg.alert('Test value written to actor +'..hx(S.selected.off)..
+     '.\nClose GG, check the HEALTH METER in-game, then reopen GG and choose CONFIRM / RESTORE.')
+  return true
+end
+local function confirmTest()
+  local t=S.pending
+  if not t then gg.alert('No pending test.');return end
+  if not actorOk() or S.actor~=t.actor then
+    S.pending=nil;gg.alert('Actor changed; original address cannot be safely restored.');return end
+  local choice=gg.choice({'YES — live health meter changed','NO — restore original value','UNSURE — restore original value'},
+    nil,'Did modifying actor +'..hx(t.off)..' change the HEALTH METER?')
+  if not choice then return end
+  if choice==1 then
+    S.liveHealthOffset=t.off;S.liveHealthConfirmed=true
+    S.pending=nil
+    gg.alert('🟢 Live health offset accepted for this session: +'..hx(t.off)..
+      '\nReport this hex offset so it can be reviewed and made permanent.')
+  else
+    local ok,e=pcall(gg.setValues,{{address=S.actor+t.off,flags=gg.TYPE_FLOAT,value=tostring(t.old)}})
+    S.pending=nil
+    gg.alert(ok and e~=false and 'Original Float restored.' or 'Restore failed: '..tostring(e))
+  end
+end
+local function editLive()
+  if not S.liveHealthConfirmed or not actorOk() then
+    gg.alert('🔴 Live health not confirmed. Use snapshot and candidate test.');return end
+  local addr=S.actor+S.liveHealthOffset
+  local old=R(addr)
+  if not old then gg.alert('Health address unreadable.');return end
+  local q=gg.prompt({'Live health Float'}, {[1]=tostring(old)}, {[1]='number'})
+  if not q then return end
+  local val=tonumber(q[1])
+  if not val or val~=val or val<0 or val>1000000 then gg.alert('Invalid Float.');return end
+  local ok,e=pcall(gg.setValues,{{address=addr,flags=gg.TYPE_FLOAT,value=tostring(val)}})
+  if not ok or e==false then gg.alert('Write failed: '..tostring(e))
+  else gg.alert('Actor +'..hx(S.liveHealthOffset)..' now reads '..tostring(R(addr))..'\nVerify in-game.') end
+end
+
 local function menu()
   while true do
     local n=gg.choice({
-      '⚙ SETUP / RE-SCAN — Verify 4 Xa DWORDs + 6 offsets',
-      lamp(canEdit('health'))..' EDIT Health (Float)',
-      lamp(canEdit('healthLimit'))..' EDIT Max health (Float)',
-      lamp(canEdit('spirit'))..' EDIT Spirit (Float)',
-      lamp(canEdit('injury'))..' EDIT Injury (Dword)',
-      lamp(canEdit('bank'))..' EDIT Bank (Dword)',
-      '🛈 Read current values + addresses',
-      '🛈 Detailed setup / status',
-      '🔴 Strength / reputation (stat array indices not mapped)',
-      '🔴 Item / NPC / vehicle spawning (functions not mapped)',
-      '↻ EXTENDED re-scan (include O, slower)',
+      '⚙ SETUP / RE-SCAN Xa, static data and live actor',
+      lamp(S.actor~=nil and actorOk())..' Live actor pointer '..hx(S.actor),
+      lamp(S.liveHealthConfirmed and actorOk())..' EDIT LIVE HEALTH',
+      lamp(canEdit('bank'))..' EDIT MONEY (verified in game)',
+      '🛈 Stored Character data — not live health',
+      '① Capture LIVE ACTOR Float baseline',
+      '② Compare LIVE ACTOR after damage',
+      lamp(S.selected~=nil and actorOk())..' ③ Test selected Float (reversible)',
+      '④ Confirm health effect / restore test',
+      '🛈 Setup report and field-offset definitions',
+      '🔴 Health limit / Spirit / Injury (live offsets unverified)',
+      '🔴 Item spawning (call address unverified)',
+      '↻ Extended setup incl. O (slow)',
       '✕ Exit'
-    },nil,'Reference Tools '..V..'\n'..status()..
-          '\nGreen = address available for editing, not yet verified in gameplay')
+    },nil,'Reference Tools '..V..'\nGreen means user-confirmed live edits or validated pointers')
     if not n then return true end
-    if n==1 then
-      bind(false)
-      setupReport()
-    elseif n==2 then edit('health')
-    elseif n==3 then edit('healthLimit')
-    elseif n==4 then edit('spirit')
-    elseif n==5 then edit('injury')
-    elseif n==6 then edit('bank')
-    elseif n==7 then
-      local choices={'health','healthLimit','spirit','injury','bank'}
-      local labels={}
-      for i,k in ipairs(choices) do
-        labels[i]=lamp(canEdit(k))..' '..k
-      end
-      local x=gg.choice(labels,nil,'Select value to read')
-      if x then readDisplay(choices[x]) end
-    elseif n==8 then setupReport()
-    elseif n==9 then gg.alert('🔴 Character.stat (+0x70) is an array reference. Strength/reputation array indices and live binding are not yet verified.')
-    elseif n==10 then spawnInfo()
-    elseif n==11 then
-      bind(true)
-      setupReport()
+    if n==1 or n==13 then bind(n==13);actorScan(n==13);gg.alert(
+       'Xa: '..lamp(S.anchor~=nil)..'\nCompiled offsets: '..S.fields..'/6\nMoney: '..lamp(S.bank~=nil)..
+       '\nActive actor: '..lamp(actorOk())..' '..hx(S.actor)..
+       '\nActor array index: '..tostring(S.actorIndex)..'\nIssue: '..tostring(S.actorIssue or 'none'))
+    elseif n==2 then gg.alert('Active actor: '..hx(S.actor)..'\nStored Character: '..hx(S.star)..
+       '\nActor check: '..tostring(actorOk())..'\nIssue: '..tostring(S.actorIssue or 'none'))
+    elseif n==3 then editLive()
+    elseif n==4 then edit('bank')
+    elseif n==5 then gg.alert('Stored Character health: '..tostring(S.health and R(S.health))..
+       '\nStored max health: '..tostring(S.health and R(S.health+4))..
+       '\nThese did NOT modify your live health meter. They are no longer editable.')
+    elseif n==6 then snap()
+    elseif n==7 then compare()
+    elseif n==8 then if testSelected() then return true end
+    elseif n==9 then confirmTest()
+    elseif n==10 then setupReport()
+    elseif n==11 then gg.alert('🔴 The named Character field offsets belong to saved character data. Live actor fields still require separate verification.')
+    elseif n==12 then spawnInfo()
     else return false end
   end
 end
 if type(gg)~='table' or type(gg.searchNumber)~='function' then error('GG environment required') end
-bind(false);gg.setVisible(false)
+bind(false);actorScan(false);gg.setVisible(false)
 gg.toast('Reference Tools '..V..': '..status())
 if not menu() then return end
 while true do
