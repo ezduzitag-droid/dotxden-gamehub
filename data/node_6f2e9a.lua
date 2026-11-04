@@ -1,7 +1,7 @@
 -- REFTOOLS-MODULE-V1.0.0
--- Revision 1.9.0 | Verified actor health +0xB4; canonical stat-array controls; money preserved.
+-- Revision 2.0.0 | Native-traced actor Spirit +0xD0 and Injury +0x248; validated stat controls retained.
 -- Finds and validates runtime pointers before offering stat edits.
-local V='1.9.0'
+local V='2.0.0'
 local SIG='-1992893169D;-1946824447D;-268807205D;1873603068D::13'
 local SVAL={-1992893169,-1946824447,-268807205,1873603068}
 local F={{'health',0x76EA10,128},{'healthLimit',0x76EA14,132},{'spirit',0x76EA18,136},
@@ -694,6 +694,8 @@ local function liveReport()
     'Live health +0xB4: '..lamp(S.liveHealthConfirmed and actorOk())..
        ' '..tostring(actorOk() and R(S.actor+0xB4) or 'unavailable'),
     'Actor health-limit +0xB8: '..tostring(actorOk() and R(S.actor+0xB8) or 'unavailable')..' | visual test: '..tostring(S.limitConfirmed==true),
+    'Native-traced actor Spirit +0xD0 (x10): '..tostring(actorOk() and R(S.actor+0xD0) or 'unavailable'),
+    'Native-traced actor Injury +0x248 (Dword): '..tostring(actorOk() and D(S.actor+0x248) or 'unavailable'),
     'Character spirit +0x88 (stored, test): '..tostring(S.star and R(S.star+0x88) or 'unavailable')..
       ' | gameplay confirmed: '..tostring(S.characterConfirmed and S.characterConfirmed.spirit==true),
     'Character injury +0x8C (stored, test): '..tostring(S.star and D(S.star+0x8C) or 'unavailable')..
@@ -706,7 +708,7 @@ local function liveReport()
     'Stats: '..tostring(arr and 'array index 1-6 mapped; HUD effects unconfirmed' or statErr),
     '',
     'The stored Character.health +0x80 is a separate record; editing it did NOT affect live gameplay.',
-    'Actor +0xB8 is statically identified as health-limit; gameplay effect untested. +0xBC and later remain unknown.'
+    'Actor +0xB8 is statically identified as health-limit. Actor +0xD0 / +0x248 have ARM64 Character->actor write traces; direct editing remains unverified.'
   }
   if S.actorIssue then lines[#lines+1]='Actor diagnostic: '..tostring(S.actorIssue) end
   gg.alert(table.concat(lines,'\n'))
@@ -823,6 +825,83 @@ local function roomTrace()
   end
 end
 
+-- Confirmed static ARM64 dataflow for Android v1.1.8:
+-- EFPJKAPKGOB actor [x19+0x20] -> Character
+-- 0x162AE3C reads Character.spirit +0x88 (Float32)
+-- 0x162AE48 multiplies by 10; 0x162AE50 writes actor +0xD0.
+-- 0x162AB24 reads Character.injury +0x8C (Int32)
+-- 0x162AB2C writes actor +0x248.
+-- Actor field-offset table: Xa+0x76F360=>0xD0; Xa+0x76F484=>0x248.
+-- These are observed code paths; live gameplay control of direct edits is UNVERIFIED.
+local LIVE_STATE_PENDING=nil
+local LIVE_STATE={
+  {name='Spirit',offset=0xD0,tableEntry=0x76F360,flags=gg.TYPE_FLOAT,
+    sourceOffset=0x88,sourceFlag=gg.TYPE_FLOAT,scale=10,min=0,max=100},
+  {name='Injury',offset=0x248,tableEntry=0x76F484,flags=gg.TYPE_DWORD,
+    sourceOffset=0x8C,sourceFlag=gg.TYPE_DWORD,scale=1,min=0,max=1000}
+}
+local function liveStateMenu()
+  if not actorOk() or not S.anchor then
+    gg.alert('No valid actor. Run SETUP / RE-SCAN in gameplay.');return end
+  local names={}
+  for _,f in ipairs(LIVE_STATE) do
+    if D(S.anchor+f.tableEntry)~=f.offset then
+      gg.alert('Native '..f.name..' actor-field entry mismatch. No writes permitted.');return end
+    local runtime=read(S.actor+f.offset,f.flags)
+    local record=read(S.star+f.sourceOffset,f.sourceFlag)
+    names[#names+1]=f.name..': actor +'..hx(f.offset)..' = '..tostring(runtime)..
+      ' / '..tostring(f.scale)..' | Character record = '..tostring(record)
+  end
+  names[#names+1]='Back'
+  local choice=gg.choice(names,nil,
+    'Android native code traces Character -> active actor for both fields.'..
+    '\nSpirit is scaled x10 in actor memory. Effects of DIRECT actor edits require a HUD test.')
+  if not choice or choice>#LIVE_STATE then return end
+  local f=LIVE_STATE[choice]
+  if not actorOk() or D(S.anchor+f.tableEntry)~=f.offset then
+    gg.alert('Actor changed or compiled field check failed. Re-scan.');return end
+  local addr=S.actor+f.offset
+  local old=read(addr,f.flags)
+  if old==nil or old~=old then gg.alert('Unreadable actor field.');return end
+  if LIVE_STATE_PENDING then
+    local p=LIVE_STATE_PENDING
+    if p.actor~=S.actor or p.addr~=addr then
+      gg.alert('Another test is pending. Reopen its menu entry to confirm or restore.');return end
+    local answer=gg.choice({'YES: visible gameplay state changed (keep)','NO/UNSURE: restore previous actor value'},nil,
+      f.name..' pending test. Old raw='..tostring(p.old)..', current raw='..tostring(old))
+    if not answer then return end
+    if answer==2 then
+      local ok,res=pcall(gg.setValues,{{address=addr,flags=f.flags,value=tostring(p.old)}})
+      if not ok or res==false then gg.alert('RESTORE FAILED: '..tostring(res));return end
+    end
+    LIVE_STATE_PENDING=nil
+    gg.alert(f.name..' actor readback='..tostring(read(addr,f.flags))..
+      '\nResult: '..(answer==1 and 'reported VISIBLE CHANGE' or 'original restored')..
+      '\nRoom-transition persistence is a separate test.')
+    return
+  end
+  local q=gg.prompt({'New '..f.name..' displayed units ('..f.min..'-'..f.max..')'},
+    {[1]=tostring(old/f.scale)},{[1]='number'})
+  if not q then return end
+  local v=tonumber(q[1])
+  if not v or v~=v or v<f.min or v>f.max or
+    (f.flags==gg.TYPE_DWORD and v~=math.floor(v)) then
+    gg.alert('Invalid '..f.name..' value; no memory modified.');return end
+  local raw=v*f.scale
+  if math.abs(raw-old)<0.01 then gg.alert('Choose a different value.');return end
+  if not actorOk() or D(S.anchor+f.tableEntry)~=f.offset then
+    gg.alert('Actor changed. Re-scan before editing.');return end
+  local ok,res=pcall(gg.setValues,{{address=addr,flags=f.flags,value=tostring(raw)}})
+  if not ok or res==false then gg.alert('Write failed: '..tostring(res));return end
+  local now=read(addr,f.flags)
+  if now==nil or math.abs(now-raw)>0.02 then
+    gg.alert('Write readback did not match. Stop further testing and report.');return end
+  LIVE_STATE_PENDING={actor=S.actor,addr=addr,old=old}
+  gg.alert('Actor '..f.name..' direct test: '..tostring(old)..' -> '..tostring(now)..
+    '\nCheck in-game HUD / injury behavior, then reopen LIVE SPIRIT / INJURY to CONFIRM or RESTORE.'..
+    '\nThe Character record remains unchanged by this direct actor write.')
+end
+
 local function menu()
   while true do
     local statPtr=statArray()
@@ -833,7 +912,8 @@ local function menu()
       lamp(canEdit('bank'))..' EDIT MONEY — Progress.bank',
       lamp(statPtr~=nil)..' EDIT ATTRIBUTES — reputation, strength, skill, agility, stamina, attitude',
       '🟡 EDIT SENTENCE / CLOCK / ALLOWANCE — Progress static fields',
-      '🟡 EDIT CHARACTER STATE (spirit, injury, injury time, dead, absent)',
+      '🟡 EDIT CHARACTER STATE (stored; room-resets)',
+      '🟡 TEST NATIVE-TRACED ACTOR SPIRIT / INJURY (+0xD0 / +0x248)',
       '🟡 TEST ACTOR MAX HEALTH (+0xB8; reversible)',
       '🛈 CHECK neighboring LIVE actor Floats (+0xBC through +0xD4)',
       '🛈 STATUS — paths and live values',
@@ -847,25 +927,26 @@ local function menu()
     },nil,'Reference Tools '..V..'\n'..status()..
        '\nGreen=address resolved. Player-stat HUD effects require testing.')
     if not n then return true end
-    if n==1 or n==15 then
-      bind(n==15);actorScan(n==15);liveReport()
+    if n==1 or n==16 then
+      bind(n==16);actorScan(n==16);LIVE_STATE_PENDING=nil;liveReport()
     elseif n==2 then editLive()
     elseif n==3 then edit('bank')
     elseif n==4 then statMenu()
     elseif n==5 then progressExtras()
     elseif n==6 then characterFieldMenu()
-    elseif n==7 then testLimit()
-    elseif n==8 then nearbyActor()
-    elseif n==9 then liveReport()
-    elseif n==10 then gg.alert('Stored Character.health +0x80: '..tostring(S.health and R(S.health))..
+    elseif n==7 then liveStateMenu()
+    elseif n==8 then testLimit()
+    elseif n==9 then nearbyActor()
+    elseif n==10 then liveReport()
+    elseif n==11 then gg.alert('Stored Character.health +0x80: '..tostring(S.health and R(S.health))..
       '\nStored Character.healthLimit +0x84: '..tostring(S.health and R(S.health+4))..
       '\nStored Character.spirit +0x88: '..tostring(S.health and R(S.health+8))..
       '\nStored Character.injury +0x8C (Int32): '..tostring(S.health and D(S.health+12))..
        '\nStored fields are separate from live actor +0xB4 health.')
-    elseif n==11 then snap()
-    elseif n==12 then compare()
-    elseif n==13 then roomTrace()
-    elseif n==14 then gg.alert('Item spawning is excluded from this revision as requested.')
+    elseif n==12 then snap()
+    elseif n==13 then compare()
+    elseif n==14 then roomTrace()
+    elseif n==15 then gg.alert('Item spawning is excluded from this revision as requested.')
     else return false end
   end
 end
