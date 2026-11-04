@@ -1,7 +1,7 @@
 -- REFTOOLS-MODULE-V1.0.0
--- Revision 1.1.0 | Binary-derived runtime class resolver.
+-- Revision 1.1.1 | Stable remote loader path, runtime class resolver.
 -- Finds and validates runtime pointers before offering stat edits.
-local V='1.1.0'
+local V='1.1.1'
 local SIG='-1992893169D;-1946824447D;-268807205D;1873603068D::13'
 local SVAL={-1992893169,-1946824447,-268807205,1873603068}
 local F={{'health',0x76EA10,128},{'healthLimit',0x76EA14,132},{'spirit',0x76EA18,136},
@@ -117,7 +117,7 @@ local function status()
          lamp(S.health~=nil)..' Character  '..lamp(S.bank~=nil)..' bank pointer'
 end
 local function info()
-  local lines={'Reference Tools '..V,'',status(),
+  local lines={'Reference Tools '..V,'Loaded from the existing fixed GitHub raw path','',status(),
     'IL2CPP base: '..hx(S.base),'Character record: '..hx(S.star),
     'Health address: '..hx(S.health),'Bank address: '..hx(S.bank),
     lamp(S.healthOK)..' HUD health match',lamp(S.bankOK)..' HUD bank match',
