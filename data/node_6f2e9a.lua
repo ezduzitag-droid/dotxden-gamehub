@@ -1,7 +1,7 @@
 -- REFTOOLS-MODULE-V1.0.0
--- Revision 1.1.1 | Stable remote loader path, runtime class resolver.
+-- Revision 1.2.0 | Setup-first and pointer-availability based editing; remote path unchanged.
 -- Finds and validates runtime pointers before offering stat edits.
-local V='1.1.1'
+local V='1.2.0'
 local SIG='-1992893169D;-1946824447D;-268807205D;1873603068D::13'
 local SVAL={-1992893169,-1946824447,-268807205,1873603068}
 local F={{'health',0x76EA10,128},{'healthLimit',0x76EA14,132},{'spirit',0x76EA18,136},
@@ -126,56 +126,132 @@ local function info()
   for _,s in ipairs(S.issues) do lines[#lines+1]='- '..s end
   gg.alert(table.concat(lines,'\n'))
 end
-local function compare(kind)
-  local addr=(kind=='health') and S.health or S.bank
-  if not addr then gg.alert('🔴 No runtime address. Recheck while gameplay is active.');return end
-  local val=(kind=='health') and R(addr) or D(addr)
-  if val==nil then gg.alert('Address unreadable. Recheck runtime bindings.');return end
-  local q=gg.prompt({'Type the '..kind..' value currently shown in the game (do NOT leave blank)'},{[1]=''},{[1]='number'})
-  if not q then return end
-  local typed=tonumber(q[1])
-  local match=typed and math.abs(typed-val)<=((kind=='health') and 0.51 or 0)
-  if kind=='health' then S.healthOK=match and true or false else S.bankOK=match and true or false end
-  gg.alert(lamp(match)..' '..kind..' HUD comparison\nMemory: '..tostring(val)..'\nEntered: '..tostring(q[1])..
-           '\nAddress: '..hx(addr)..'\nA matching number is provisional; verify game behavior.')
+-- Availability means a validated, readable runtime address. It does NOT prove HUD effects.
+local function addrFor(kind)
+  if kind=='bank' then return S.bank,gg.TYPE_DWORD end
+  local offsets={health=0,healthLimit=4,spirit=8,injury=12}
+  if not S.health or offsets[kind]==nil then return nil,nil end
+  return S.health+offsets[kind], kind=='injury' and gg.TYPE_DWORD or gg.TYPE_FLOAT
 end
-local function edit(kind)
-  local addr=(kind=='health') and S.health or S.bank
-  local enabled=(kind=='health') and S.healthOK or S.bankOK
-  if not addr or not enabled then gg.alert('🔴 Locked. Resolve pointer and confirm the on-screen value first.');return end
-  local p=S.classes[kind=='health' and 'Characters' or 'Progress']
-  if not p or D(p.address+0x11C)~=p.token or
-     Q(p.address+0xB8)~=p.storage or D(S.anchor)~=SVAL[1] then
-    S.healthOK=false;S.bankOK=false
-    gg.alert('Runtime pointer or module changed. Run resolver again.');return
+
+local function canEdit(kind)
+  local addr,kindFlag=addrFor(kind)
+  if not addr or not S.anchor or S.fields~=6 then return false end
+  if (kind=='bank' and not S.classes.Progress) or
+     (kind~='bank' and not S.classes.Characters) then return false end
+  local value=read(addr,kindFlag)
+  return value~=nil and value==value
+end
+
+local function verifyPointer(kind)
+  local p=S.classes[kind=='bank' and 'Progress' or 'Characters']
+  if not p or not S.anchor or S.fields~=6 then return false,'Setup has not passed all checks' end
+  if D(S.anchor)~=SVAL[1] or D(p.address+0x11C)~=p.token or
+     Q(p.address+0xB8)~=p.storage then
+    return false,'Module/class pointer changed'
   end
-  if kind=='health' then
-    if not S.star or Q(p.storage+0x20)~=S.star or
-       not Q(S.star) or D(Q(S.star)+0x11C)~=C.Character then
-      S.healthOK=false;gg.alert('Character pointer changed; rescan.');return
+  if kind=='bank' then
+    if not S.bank or S.bank~=p.storage+0x38 then return false,'Bank field pointer changed' end
+  else
+    if not S.star or not S.health or Q(p.storage+0x20)~=S.star then
+      return false,'Active character pointer changed'
+    end
+    local cl=Q(S.star)
+    if not cl or D(cl+0x11C)~=C.Character then
+      return false,'Character class pointer changed'
     end
   end
-  local current=(kind=='health') and R(addr) or D(addr)
-  if current==nil then return end
-  local q=gg.prompt({'New '..kind..' amount'}, {[1]=tostring(current)}, {[1]='number'})
-  if not q then return end
-  local value=tonumber(q[1])
-  if not value or value~=value then return end
+  return true
+end
+
+local function readDisplay(kind)
+  local addr,flag=addrFor(kind)
+  if not addr then gg.alert('🔴 Unavailable. Select Setup / Re-scan first.');return end
+  local val=read(addr,flag)
+  gg.alert((val~=nil and '🟢 ' or '🔴 ')..kind..
+          '\nCurrent candidate: '..tostring(val)..'\nAddress: '..hx(addr)..
+          '\nType: '..(flag==gg.TYPE_DWORD and 'Dword' or 'Float')..
+          '\nThis value is from the resolved runtime object. Confirm it in the game.')
+end
+
+local function edit(kind)
+  if not canEdit(kind) then gg.alert('🔴 '..kind..' is unavailable. Run Setup / Re-scan.');return end
+  local valid,reason=verifyPointer(kind)
+  if not valid then
+    if kind=='bank' then S.bank=nil else S.health=nil;S.star=nil end
+    gg.alert('🔴 Binding changed: '..tostring(reason)..'\nRun Setup / Re-scan.')
+    return
+  end
+  local addr,flag=addrFor(kind)
+  local current=read(addr,flag)
+  if current==nil then gg.alert('🔴 Runtime value unreadable. Re-scan.');return end
+  local prompt=gg.prompt({'New '..kind..' value'}, {[1]=tostring(current)}, {[1]='number'})
+  if not prompt then return end
+  local nextValue=tonumber(prompt[1])
+  if not nextValue or nextValue~=nextValue or nextValue==math.huge or nextValue==-math.huge then
+    gg.alert('Invalid number. No change made.');return
+  end
   if kind=='health' then
-    local max=R(addr+4)
-    if not max or value<0 or value>math.min(max,100000) then
-      gg.alert('Health must be between 0 and healthLimit.');return
+    local lim=R(S.health+4)
+    if not lim or nextValue<0 or nextValue>math.min(lim,1000000) then
+      gg.alert('Health must be between 0 and the current health limit ('..tostring(lim)..').')
+      return
+    end
+  elseif kind=='healthLimit' then
+    local h=R(S.health)
+    if nextValue<1 or nextValue>1000000 or (h and nextValue<h) then
+      gg.alert('Maximum health must be at least current health and at most 1,000,000.');return
+    end
+  elseif kind=='spirit' then
+    if nextValue<0 or nextValue>1000000 then
+      gg.alert('Spirit must be between 0 and 1,000,000.');return
+    end
+  elseif kind=='injury' then
+    if nextValue~=math.floor(nextValue) or nextValue<0 or nextValue>1000000 then
+      gg.alert('Injury must be an integer between 0 and 1,000,000.');return
+    end
+  elseif kind=='bank' then
+    if nextValue~=math.floor(nextValue) or nextValue<0 or nextValue>2000000000 then
+      gg.alert('Bank must be an integer between 0 and 2,000,000,000.');return
+    end
+  end
+  local ok,result=pcall(gg.setValues,{{address=addr,flags=flag,value=tostring(nextValue)}})
+  if not ok or result==false then
+    gg.alert('Write failed: '..tostring(result));return
+  end
+  local after=read(addr,flag)
+  local matches=after and math.abs(after-nextValue)<(flag==gg.TYPE_FLOAT and 0.01 or 0.1)
+  gg.alert((matches and '🟢 Write readback matched' or '🔴 Readback mismatch')..
+           '\nField: '..kind..
+           '\nBefore: '..tostring(current)..'\nRequested: '..tostring(nextValue)..
+           '\nReadback: '..tostring(after)..'\nAddress: '..hx(addr)..
+           '\nNow verify the HUD/gameplay. A write readback is not proof of game effect.')
+end
+
+local function setupReport()
+  local lines={'SETUP / Xa + runtime pointers','',
+    '4 Xa DWORDs: '..(S.anchor and 'PASS' or 'FAIL'),
+    'Compiled field offsets: '..tostring(S.fields)..'/6',
+    'First Xa signature address: '..hx(S.anchor),
+    'IL2CPP module base: '..hx(S.base),'',
+    'GROUP READBACK:'}
+  if S.anchor then
+    for i,v in ipairs(SVAL) do
+      lines[#lines+1] = hx(S.anchor+4*(i-1))..' = '..tostring(D(S.anchor+4*(i-1)))..' (expected '..v..')'
     end
   else
-    if value~=math.floor(value) or value<0 or value>2000000000 then
-      gg.alert('Bank must be an integer between 0 and 2 billion.');return
-    end
+    lines[#lines+1]='Signature missing'
   end
-  local t=(kind=='health') and gg.TYPE_FLOAT or gg.TYPE_DWORD
-  local ok,r=pcall(gg.setValues,{{address=addr,flags=t,value=tostring(value)}})
-  if not ok or r==false then gg.alert('Write rejected: '..tostring(r));return end
-  gg.alert('Wrote candidate '..kind..'\nReadback: '..tostring((kind=='health') and R(addr) or D(addr))..
-           '\nCheck the actual game HUD and gameplay; immediate readback alone is not proof.')
+  lines[#lines+1]=''
+  lines[#lines+1]='LIVE BINDINGS:'
+  for _,kind in ipairs({'health','healthLimit','spirit','injury','bank'}) do
+    local addr,flag=addrFor(kind)
+    lines[#lines+1]=lamp(canEdit(kind))..' '..kind..'  '..hx(addr)..'  = '..tostring(addr and read(addr,flag) or 'not found')
+  end
+  lines[#lines+1]=''
+  lines[#lines+1]='Green = readable, validated candidate address; gameplay effect unconfirmed.'
+  for _,e in ipairs(S.issues) do lines[#lines+1]='- '..e end
+  gg.alert(table.concat(lines,'\n'))
 end
 local function fieldInfo()
   if not S.anchor then gg.alert('Xa unavailable');return end
@@ -190,26 +266,44 @@ local function spawnInfo()
 end
 local function menu()
   while true do
-    local n=gg.choice({status(),
-      lamp(S.health~=nil)..' Read health',lamp(S.bank~=nil)..' Read bank',
-      lamp(S.healthOK)..' Compare health with HUD',lamp(S.bankOK)..' Compare bank with HUD',
-      lamp(S.healthOK)..' Edit health',lamp(S.bankOK)..' Edit bank',
-      '🔴 Item and NPC spawner', '🛈 Compiled offset table',
-      '↻ Rebind runtime (A/Ca/Ch/Cd/Cb)',
-      '↻ Rebind including O (slow)', '✕ Exit'},nil,'Reference Tools '..V..' | runtime probe')
+    local n=gg.choice({
+      '⚙ SETUP / RE-SCAN — Verify 4 Xa DWORDs + 6 offsets',
+      lamp(canEdit('health'))..' EDIT Health (Float)',
+      lamp(canEdit('healthLimit'))..' EDIT Max health (Float)',
+      lamp(canEdit('spirit'))..' EDIT Spirit (Float)',
+      lamp(canEdit('injury'))..' EDIT Injury (Dword)',
+      lamp(canEdit('bank'))..' EDIT Bank (Dword)',
+      '🛈 Read current values + addresses',
+      '🛈 Detailed setup / status',
+      '🔴 Strength / reputation (stat array indices not mapped)',
+      '🔴 Item / NPC / vehicle spawning (functions not mapped)',
+      '↻ EXTENDED re-scan (include O, slower)',
+      '✕ Exit'
+    },nil,'Reference Tools '..V..'\n'..status()..
+          '\nGreen = address available for editing, not yet verified in gameplay')
     if not n then return true end
-    if n==1 then info()
-    elseif n==2 then
-      gg.alert(S.health and ('Health: '..tostring(R(S.health))..' / '..tostring(R(S.health+4))..
-               '\nSpirit: '..tostring(R(S.health+8))..'\nAddress: '..hx(S.health)) or 'Character not bound')
-    elseif n==3 then gg.alert(S.bank and ('Bank: '..tostring(D(S.bank))..'\nAddress: '..hx(S.bank)) or 'Bank not bound')
-    elseif n==4 then compare('health')
-    elseif n==5 then compare('bank')
-    elseif n==6 then edit('health')
-    elseif n==7 then edit('bank')
-    elseif n==8 then spawnInfo()
-    elseif n==9 then fieldInfo()
-    elseif n==10 or n==11 then bind(n==11);gg.toast(status())
+    if n==1 then
+      bind(false)
+      setupReport()
+    elseif n==2 then edit('health')
+    elseif n==3 then edit('healthLimit')
+    elseif n==4 then edit('spirit')
+    elseif n==5 then edit('injury')
+    elseif n==6 then edit('bank')
+    elseif n==7 then
+      local choices={'health','healthLimit','spirit','injury','bank'}
+      local labels={}
+      for i,k in ipairs(choices) do
+        labels[i]=lamp(canEdit(k))..' '..k
+      end
+      local x=gg.choice(labels,nil,'Select value to read')
+      if x then readDisplay(choices[x]) end
+    elseif n==8 then setupReport()
+    elseif n==9 then gg.alert('🔴 Character.stat (+0x70) is an array reference. Strength/reputation array indices and live binding are not yet verified.')
+    elseif n==10 then spawnInfo()
+    elseif n==11 then
+      bind(true)
+      setupReport()
     else return false end
   end
 end
