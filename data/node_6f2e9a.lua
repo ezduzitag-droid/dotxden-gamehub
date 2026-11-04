@@ -1,7 +1,7 @@
 -- REFTOOLS-MODULE-V1.0.0
--- Revision 1.3.0 | Live actor investigation; preserved confirmed money edit.
+-- Revision 1.4.0 | Verified actor health +0xB4; canonical stat-array controls; money preserved.
 -- Finds and validates runtime pointers before offering stat edits.
-local V='1.3.0'
+local V='1.4.0'
 local SIG='-1992893169D;-1946824447D;-268807205D;1873603068D::13'
 local SVAL={-1992893169,-1946824447,-268807205,1873603068}
 local F={{'health',0x76EA10,128},{'healthLimit',0x76EA14,132},{'spirit',0x76EA18,136},
@@ -114,7 +114,7 @@ local function bind(slow)
 end
 local function status()
   return lamp(S.anchor~=nil)..' Xa  '..lamp(S.fields==6)..' fields  '..
-         lamp(S.health~=nil)..' Character  '..lamp(S.bank~=nil)..' bank pointer'
+         lamp(S.bank~=nil)..' money'
 end
 local function info()
   local lines={'Reference Tools '..V,'Loaded from the existing fixed GitHub raw path','',status(),
@@ -329,6 +329,14 @@ local function actorScan(slow)
     return false
   end
   S.actor=found[1].obj;S.actorIndex=found[1].index
+  -- The field-offset table at libil2cpp +0x76F65C defines actor Float +0xB4.
+  -- Live health at that offset was verified by the tester in two game sessions.
+  if S.anchor and D(S.anchor+0x76F344)==0xB4 and actorOk() then
+    S.liveHealthOffset=0xB4
+    S.liveHealthConfirmed=true
+  else
+    S.actorIssue='Actor field-offset entry 0xB4 did not pass verification'
+  end
   return true
 end
 local function floats()
@@ -435,43 +443,190 @@ local function editLive()
   else gg.alert('Actor +'..hx(S.liveHealthOffset)..' now reads '..tostring(R(addr))..'\nVerify in-game.') end
 end
 
+-- Derived from Character.stat at +0x70 (Float array). Published PC mod uses
+-- ChangeStat(1..6): Reputation, Strength, Skill, Agility, Stamina, Attitude.
+-- Individual Android edits have not yet been confirmed by in-game testing.
+local STATS={
+  {name='Reputation',index=1},{name='Strength',index=2},
+  {name='Skill',index=3},{name='Agility',index=4},
+  {name='Stamina',index=5},{name='Attitude',index=6}
+}
+local function statArray()
+  if not actorOk() or not S.star then return nil,nil,'No validated active actor' end
+  local a=Q(S.star+0x70)
+  if not a or a<0x10000 or a%8~=0 then return nil,nil,'Character.stat array pointer unavailable' end
+  local len=Q(a+0x18)
+  if not len or len<7 or len>64 or math.floor(len)~=len then
+    return nil,nil,'Invalid stat array length: '..tostring(len)
+  end
+  local req={}
+  for i=1,6 do req[i]={address=a+0x20+i*4,flags=gg.TYPE_FLOAT} end
+  local vals=batch(req)
+  if not vals then return nil,nil,'Stat array cannot be read' end
+  for _,v in ipairs(vals) do
+    local x=tonumber(v.value)
+    if not x or x~=x or x<0 or x>1000 then
+      return nil,nil,'One or more stat values failed sanity check'
+    end
+  end
+  return a,vals,nil
+end
+
+local function statMenu()
+  while true do
+    local arr,values,problem=statArray()
+    if not arr then gg.alert('🔴 Attribute pointer unresolved:\n'..tostring(problem));return end
+    local labels={}
+    for i,st in ipairs(STATS) do
+      labels[i]='🟢 '..st.name..' ['..i..'] = '..string.format('%.1f',values[i].value)
+    end
+    labels[7]='↩ Back'
+    local selected=gg.choice(labels,nil,
+      'Six Character.stat Float entries\nGreen = verified pointer, HUD/gameplay effect still to test')
+    if not selected or selected==7 then return end
+    local st=STATS[selected]
+    local addr=arr+0x20+st.index*4
+    local old=R(addr)
+    local okPointer=verifyPointer('health')
+    if not okPointer or Q(S.star+0x70)~=arr then
+      gg.alert('Active character or stat array changed. Run Setup again.');return
+    end
+    local prompt=gg.prompt({'New '..st.name..' (1-99)'},{[1]=tostring(old)},{[1]='number'})
+    if prompt then
+      local v=tonumber(prompt[1])
+      if not v or v~=v or v<1 or v>99 then
+        gg.alert('Enter an attribute value from 1 to 99.')
+      else
+        local ok,res=pcall(gg.setValues,{{address=addr,flags=gg.TYPE_FLOAT,value=tostring(v)}})
+        if not ok or res==false then
+          gg.alert('Write failed: '..tostring(res))
+        else
+          gg.alert(st.name..'\nPrevious: '..tostring(old)..'\nReadback: '..tostring(R(addr))..
+            '\nAddress: '..hx(addr)..'\n\nCheck the character profile in-game. The memory address is verified; the gameplay effect still needs testing.')
+        end
+      end
+    end
+  end
+end
+
+-- Progress offsets come from the v1.1.8 compiled field-offset table.
+-- Sentence is modified directly by the public PC cheat; direct Android write still needs HUD validation.
+local function progressExtras()
+  while true do
+    local p=S.classes.Progress
+    if not p or not p.storage or p.storage<0x10000 or
+       D(p.address+0x11C)~=C.Progress or Q(p.address+0xB8)~=p.storage then
+      gg.alert('🔴 Progress static-data block not validated. Run Setup.');return
+    end
+    local base=p.storage
+    local sentence=D(base+0x4C)
+    local day=D(base+0x14)
+    local hours=D(base+0x0C)
+    local minutes=D(base+0x08)
+    local pick=gg.choice({
+      '🟡 Edit sentence days = '..tostring(sentence),
+      '🛈 Inspect day / clock: day '..tostring(day)..', '..tostring(hours)..':'..tostring(minutes),
+      '🛈 Inspect allowance = '..tostring(D(base+0x48)),
+      '↩ Back'
+    },nil,'Progress values (same live static block as confirmed bank)')
+    if not pick or pick==4 then return end
+    if pick==1 then
+      local q=gg.prompt({'New sentence days (0-36525)'},{[1]=tostring(sentence or '')},{[1]='number'})
+      if q then
+        local v=tonumber(q[1])
+        if not v or v~=math.floor(v) or v<0 or v>36525 then
+          gg.alert('Enter an integer from 0 to 36525.')
+        elseif D(p.address+0x11C)~=C.Progress or Q(p.address+0xB8)~=base then
+          gg.alert('Progress pointer changed; setup must be repeated.');return
+        else
+          local ok,e=pcall(gg.setValues,{{address=base+0x4C,flags=gg.TYPE_DWORD,value=tostring(v)}})
+          if not ok or e==false then gg.alert('Write failed: '..tostring(e))
+          else gg.alert('Sentence readback: '..tostring(D(base+0x4C))..
+            '\nCheck your sentence in the game. UI/game effect is not yet confirmed.') end
+        end
+      end
+    elseif pick==2 then
+      gg.alert('Progress static values (Dword):\nDay +0x14 = '..tostring(day)..
+        '\nHours +0x0C = '..tostring(hours)..'\nMinutes +0x08 = '..tostring(minutes)..
+        '\nThese values are read-only for now; time is updated continuously.')
+    else
+      gg.alert('Allowance, Progress static +0x48 = '..tostring(D(base+0x48))..
+        '\nRead only; gameplay effect not established.')
+    end
+  end
+end
+
+local function nearbyActor()
+  if not actorOk() then gg.alert('No live actor. Run Setup during gameplay.');return end
+  local lines={'Live actor: '..hx(S.actor),'',
+    '🟢 +0xB4 health = '..tostring(R(S.actor+0xB4)),
+    'Nearby Float fields; meanings NOT verified:'}
+  for _,off in ipairs({0xB8,0xBC,0xC0,0xC4,0xC8,0xCC,0xD0,0xD4}) do
+    lines[#lines+1]='🔴 +'..hx(off)..' = '..tostring(R(S.actor+off))
+  end
+  lines[#lines+1]=''
+  lines[#lines+1]='Do NOT equate the nearest floats with max health or spirit without observing actual gameplay changes.'
+  gg.alert(table.concat(lines,'\n'))
+end
+local function liveReport()
+  local arr,vals,statErr=statArray()
+  local lines={
+    'Reference Tools '..V,
+    'Xa signature: '..lamp(S.anchor~=nil)..' '..hx(S.anchor),
+    'Compiled 6/6: '..lamp(S.fields==6),
+    'Active actor: '..lamp(actorOk())..' '..hx(S.actor),
+    'Live health +0xB4: '..lamp(S.liveHealthConfirmed and actorOk())..
+       ' '..tostring(actorOk() and R(S.actor+0xB4) or 'unavailable'),
+    'Money Progress.bank: '..lamp(canEdit('bank'))..
+       ' '..tostring(S.bank and D(S.bank) or 'unavailable'),
+    'Attributes Float array: '..lamp(arr~=nil)..' '..hx(arr),
+    'Sentence: '..tostring(S.classes.Progress and
+       S.classes.Progress.storage and D(S.classes.Progress.storage+0x4C) or 'unavailable'),
+    'Stats: '..tostring(arr and 'array index 1-6 mapped; HUD effects unconfirmed' or statErr),
+    '',
+    'The stored Character.health +0x80 is a separate record; editing it did NOT affect live gameplay.',
+    'The 0xB8/0xBC neighboring actor fields are not identified as healthLimit/spirit.'
+  }
+  if S.actorIssue then lines[#lines+1]='Actor diagnostic: '..tostring(S.actorIssue) end
+  gg.alert(table.concat(lines,'\n'))
+end
+
 local function menu()
   while true do
+    local statPtr=statArray()
+    local liveHealth=S.liveHealthConfirmed and actorOk()
     local n=gg.choice({
-      '⚙ SETUP / RE-SCAN Xa, static data and live actor',
-      lamp(S.actor~=nil and actorOk())..' Live actor pointer '..hx(S.actor),
-      lamp(S.liveHealthConfirmed and actorOk())..' EDIT LIVE HEALTH',
-      lamp(canEdit('bank'))..' EDIT MONEY (verified in game)',
-      '🛈 Stored Character data — not live health',
-      '① Capture LIVE ACTOR Float baseline',
-      '② Compare LIVE ACTOR after damage',
-      lamp(S.selected~=nil and actorOk())..' ③ Test selected Float (reversible)',
-      '④ Confirm health effect / restore test',
-      '🛈 Setup report and field-offset definitions',
-      '🔴 Health limit / Spirit / Injury (live offsets unverified)',
-      '🔴 Item spawning (call address unverified)',
-      '↻ Extended setup incl. O (slow)',
+      '⚙ SETUP / RE-SCAN (Xa + live actor)',
+      lamp(liveHealth)..' EDIT LIVE HEALTH — actor +0xB4',
+      lamp(canEdit('bank'))..' EDIT MONEY — Progress.bank',
+      lamp(statPtr~=nil)..' EDIT ATTRIBUTES — reputation, strength, skill, agility, stamina, attitude',
+      '🟡 SENTENCE / CLOCK / ALLOWANCE — Progress static fields',
+      '🛈 CHECK neighboring LIVE actor Floats (+0xB8 through +0xD4)',
+      '🛈 STATUS — paths and live values',
+      '🛈 Stored Character data (not live health)',
+      '① Capture actor Float baseline (optional research)',
+      '② Compare actor Floats after damage (optional research)',
+      '🔴 Item spawning — not in this milestone',
+      '↻ EXTENDED setup including O (slower)',
       '✕ Exit'
-    },nil,'Reference Tools '..V..'\nGreen means user-confirmed live edits or validated pointers')
+    },nil,'Reference Tools '..V..'\n'..status()..
+       '\nGreen=address resolved. Player-stat HUD effects require testing.')
     if not n then return true end
-    if n==1 or n==13 then bind(n==13);actorScan(n==13);gg.alert(
-       'Xa: '..lamp(S.anchor~=nil)..'\nCompiled offsets: '..S.fields..'/6\nMoney: '..lamp(S.bank~=nil)..
-       '\nActive actor: '..lamp(actorOk())..' '..hx(S.actor)..
-       '\nActor array index: '..tostring(S.actorIndex)..'\nIssue: '..tostring(S.actorIssue or 'none'))
-    elseif n==2 then gg.alert('Active actor: '..hx(S.actor)..'\nStored Character: '..hx(S.star)..
-       '\nActor check: '..tostring(actorOk())..'\nIssue: '..tostring(S.actorIssue or 'none'))
-    elseif n==3 then editLive()
-    elseif n==4 then edit('bank')
-    elseif n==5 then gg.alert('Stored Character health: '..tostring(S.health and R(S.health))..
-       '\nStored max health: '..tostring(S.health and R(S.health+4))..
-       '\nThese did NOT modify your live health meter. They are no longer editable.')
-    elseif n==6 then snap()
-    elseif n==7 then compare()
-    elseif n==8 then if testSelected() then return true end
-    elseif n==9 then confirmTest()
-    elseif n==10 then setupReport()
-    elseif n==11 then gg.alert('🔴 The named Character field offsets belong to saved character data. Live actor fields still require separate verification.')
-    elseif n==12 then spawnInfo()
+    if n==1 or n==12 then
+      bind(n==12);actorScan(n==12);liveReport()
+    elseif n==2 then editLive()
+    elseif n==3 then edit('bank')
+    elseif n==4 then statMenu()
+    elseif n==5 then progressExtras()
+    elseif n==6 then nearbyActor()
+    elseif n==7 then liveReport()
+    elseif n==8 then gg.alert('Stored Character.health +0x80: '..tostring(S.health and R(S.health))..
+      '\nStored Character.healthLimit +0x84: '..tostring(S.health and R(S.health+4))..
+      '\nStored Character.spirit +0x88: '..tostring(S.health and R(S.health+8))..
+      '\nThese are separate from confirmed live actor health at +0xB4.')
+    elseif n==9 then snap()
+    elseif n==10 then compare()
+    elseif n==11 then gg.alert('Item spawning is excluded from this revision as requested.')
     else return false end
   end
 end
