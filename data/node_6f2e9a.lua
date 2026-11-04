@@ -1,7 +1,7 @@
 -- REFTOOLS-MODULE-V1.0.0
--- Revision 1.6.0 | Verified actor health +0xB4; canonical stat-array controls; money preserved.
+-- Revision 1.7.0 | Verified actor health +0xB4; canonical stat-array controls; money preserved.
 -- Finds and validates runtime pointers before offering stat edits.
-local V='1.6.0'
+local V='1.7.0'
 local SIG='-1992893169D;-1946824447D;-268807205D;1873603068D::13'
 local SVAL={-1992893169,-1946824447,-268807205,1873603068}
 local F={{'health',0x76EA10,128},{'healthLimit',0x76EA14,132},{'spirit',0x76EA18,136},
@@ -515,48 +515,46 @@ end
 -- Sentence is modified directly by the public PC cheat; direct Android write still needs HUD validation.
 local function progressExtras()
   if not S.anchor or D(S.anchor+0x76EBE8)~=0x4C then
-    gg.alert('🔴 Progress.sentence field table mismatch (+0x4C expected).');return
-  end
+    gg.alert('Progress.sentence offset check failed. Run SETUP.');return end
+  local fields={
+    {name='Sentence days',off=0x4C,kind=gg.TYPE_DWORD,min=0,max=36525,entry=0x76EBE8},
+    {name='Day',off=0x14,kind=gg.TYPE_DWORD,min=0,max=100000},
+    {name='Hours',off=0x0C,kind=gg.TYPE_DWORD,min=0,max=23},
+    {name='Minutes',off=0x08,kind=gg.TYPE_DWORD,min=0,max=59},
+    {name='Allowance',off=0x48,kind=gg.TYPE_DWORD,min=0,max=2000000000}
+  }
   while true do
     local p=S.classes.Progress
     if not p or not p.storage or p.storage<0x10000 or
-       D(p.address+0x11C)~=C.Progress or Q(p.address+0xB8)~=p.storage then
-      gg.alert('🔴 Progress static-data block not validated. Run Setup.');return
+      D(p.address+0x11C)~=C.Progress or Q(p.address+0xB8)~=p.storage then
+      gg.alert('Progress class/static block not validated. Re-scan.');return end
+    local labels={}
+    for i,f in ipairs(fields) do
+      labels[i]='EDIT '..f.name..' + '..hx(f.off)..' = '..tostring(D(p.storage+f.off))
     end
-    local base=p.storage
-    local sentence=D(base+0x4C)
-    local day=D(base+0x14)
-    local hours=D(base+0x0C)
-    local minutes=D(base+0x08)
-    local pick=gg.choice({
-      '🟡 Edit sentence days = '..tostring(sentence),
-      '🛈 Inspect day / clock: day '..tostring(day)..', '..tostring(hours)..':'..tostring(minutes),
-      '🛈 Inspect allowance = '..tostring(D(base+0x48)),
-      '↩ Back'
-    },nil,'Progress values (same live static block as confirmed bank)')
-    if not pick or pick==4 then return end
-    if pick==1 then
-      local q=gg.prompt({'New sentence days (0-36525)'},{[1]=tostring(sentence or '')},{[1]='number'})
-      if q then
-        local v=tonumber(q[1])
-        if not v or v~=math.floor(v) or v<0 or v>36525 then
-          gg.alert('Enter an integer from 0 to 36525.')
-        elseif D(p.address+0x11C)~=C.Progress or Q(p.address+0xB8)~=base then
-          gg.alert('Progress pointer changed; setup must be repeated.');return
-        else
-          local ok,e=pcall(gg.setValues,{{address=base+0x4C,flags=gg.TYPE_DWORD,value=tostring(v)}})
-          if not ok or e==false then gg.alert('Write failed: '..tostring(e))
-          else gg.alert('Sentence readback: '..tostring(D(base+0x4C))..
-            '\nCheck your sentence in the game. UI/game effect is not yet confirmed.') end
-        end
+    labels[#labels+1]='Back'
+    local pick=gg.choice(labels,nil,
+      'Progress fields: edit with immediate readback. Clock values may be overwritten by simulation.\nRuntime gameplay effects require checking.')
+    if not pick or pick>#fields then return end
+    local f=fields[pick]
+    if f.entry and D(S.anchor+f.entry)~=f.off then
+      gg.alert(f.name..' field-offset table mismatch.');return end
+    local old=D(p.storage+f.off)
+    if old==nil then gg.alert('Unreadable value.');return end
+    local q=gg.prompt({'New '..f.name..' ('..f.min..'–'..f.max..')'},{[1]=tostring(old)},{[1]='number'})
+    if q then
+      local v=tonumber(q[1])
+      if not v or v~=math.floor(v) or v<f.min or v>f.max then
+        gg.alert('Invalid integer range ('..f.min..'–'..f.max..').')
+      elseif D(p.address+0x11C)~=C.Progress or Q(p.address+0xB8)~=p.storage then
+        gg.alert('Progress pointer changed; re-scan.');return
+      else
+        local addr=p.storage+f.off
+        local ok,e=pcall(gg.setValues,{{address=addr,flags=gg.TYPE_DWORD,value=tostring(v)}})
+        if not ok or e==false then gg.alert('Write failed: '..tostring(e))
+        else gg.alert(f.name..' old='..tostring(old)..' readback='..tostring(D(addr))..
+          '\nCheck gameplay now. Clock fields can be updated immediately by the game.') end
       end
-    elseif pick==2 then
-      gg.alert('Progress static values (Dword):\nDay +0x14 = '..tostring(day)..
-        '\nHours +0x0C = '..tostring(hours)..'\nMinutes +0x08 = '..tostring(minutes)..
-        '\nThese values are read-only for now; time is updated continuously.')
-    else
-      gg.alert('Allowance, Progress static +0x48 = '..tostring(D(base+0x48))..
-        '\nRead only; gameplay effect not established.')
     end
   end
 end
@@ -608,6 +606,9 @@ end
 local CHAR_FIELDS={
   {name='Spirit',key='spirit',offset=0x88,entry=0x76EA18,flags=gg.TYPE_FLOAT,minimum=0,maximum=1000},
   {name='Injury',key='injury',offset=0x8C,entry=0x76EA1C,flags=gg.TYPE_DWORD,minimum=0,maximum=1000},
+  {name='Injury time',key='injuryTime',offset=0x90,entry=0x76EA20,flags=gg.TYPE_DWORD,minimum=0,maximum=36525},
+  {name='Dead state',key='dead',offset=0x94,entry=0x76EA24,flags=gg.TYPE_DWORD,minimum=0,maximum=1},
+  {name='Absent state',key='absent',offset=0x98,entry=0x76EA28,flags=gg.TYPE_DWORD,minimum=0,maximum=1},
 }
 local function characterFieldMenu()
   if not actorOk() or not S.star or not S.anchor then
@@ -618,14 +619,9 @@ local function characterFieldMenu()
       gg.alert('Compiled '..f.name..' field offset mismatch. No edits offered.');return end
     items[#items+1]=f.name..' (Character +'..hx(f.offset)..') = '..tostring(read(S.star+f.offset,f.flags))
   end
-  for _,info in ipairs({{'Injury time',0x90,0x76EA20},{'Dead state',0x94,0x76EA24},{'Absent state',0x98,0x76EA28}}) do
-    if D(S.anchor+info[3])~=info[2] then
-      gg.alert('Compiled '..info[1]..' offset mismatch. No edits offered.');return end
-    items[#items+1]='READ ONLY '..info[1]..' = '..tostring(D(S.star+info[2]))
-  end
   items[#items+1]='Back'
-  local pick=gg.choice(items,nil,'Spirit and injury — Character record, NOT proven live controller.\nGreen confirmation requires visible gameplay effect.')
-  if not pick or pick>2 then return end
+  local pick=gg.choice(items,nil,'Character-record fields verified in IL2CPP; Spirit/Injury did not alter gameplay in prior test.\nAll 5 are experimental; dead/absent writes could change scenes, state or stability.')
+  if not pick or pick>#CHAR_FIELDS then return end
   local f=CHAR_FIELDS[pick]
   local valid=verifyPointer('health')
   if not valid or not actorOk() or D(S.anchor+f.entry)~=f.offset then
@@ -636,7 +632,7 @@ local function characterFieldMenu()
   local pending=S.characterPending
   if pending then
     if pending.addr~=addr or pending.key~=f.key or pending.actor~=S.actor then
-      gg.alert('A different Spirit/Injury edit is pending. Reopen that field to confirm or restore.');return end
+      gg.alert('A different Character field edit is pending. Reopen that field to confirm or restore.');return end
     local choice=gg.choice({'YES — in-game character state visibly changed','NO / UNSURE — restore previous value'},nil,
       f.name..' test: old='..tostring(pending.old)..' current='..tostring(current))
     if not choice then return end
@@ -653,7 +649,12 @@ local function characterFieldMenu()
       '\nPersistence after restart remains a separate test.')
     return
   end
-  local q=gg.prompt({'TEST '..f.name..' (0–'..f.maximum..')'},{[1]=tostring(current)},{[1]='number'})
+  if f.key=='dead' or f.key=='absent' then
+    local confirm=gg.choice({'Continue with experimental write','Cancel'},nil,
+      'WARNING: '..f.name..' may trigger game-state changes or a crash. No crash-free guarantee. Test with a recoverable save.')
+    if confirm~=1 then return end
+  end
+  local q=gg.prompt({'EXPERIMENTAL '..f.name..' (0–'..f.maximum..')'},{[1]=tostring(current)},{[1]='number'})
   if not q then return end
   local v=tonumber(q[1])
   if not v or v~=v or v<f.minimum or v>f.maximum or v==current or
@@ -720,8 +721,8 @@ local function menu()
       lamp(liveHealth)..' EDIT LIVE HEALTH — actor +0xB4',
       lamp(canEdit('bank'))..' EDIT MONEY — Progress.bank',
       lamp(statPtr~=nil)..' EDIT ATTRIBUTES — reputation, strength, skill, agility, stamina, attitude',
-      '🟡 SENTENCE / CLOCK / ALLOWANCE — Progress static fields',
-      '🟡 TEST SPIRIT / INJURY (Character +0x88 / +0x8C)',
+      '🟡 EDIT SENTENCE / CLOCK / ALLOWANCE — Progress static fields',
+      '🟡 EDIT CHARACTER STATE (spirit, injury, injury time, dead, absent)',
       '🟡 TEST ACTOR MAX HEALTH (+0xB8; reversible)',
       '🛈 CHECK neighboring LIVE actor Floats (+0xBC through +0xD4)',
       '🛈 STATUS — paths and live values',
