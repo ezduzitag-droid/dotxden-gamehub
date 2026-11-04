@@ -1,7 +1,7 @@
 -- REFTOOLS-MODULE-V1.0.0
--- Revision 2.1.0 | Clean developer controls: live health, spirit, injury, money, attributes, progress.
+-- Revision 2.1.1 | Restore live-binding availability circles; clean developer controls: live health, spirit, injury, money, attributes, progress.
 -- Finds and validates runtime pointers before offering stat edits.
-local V='2.1.0'
+local V='2.1.1'
 local SIG='-1992893169D;-1946824447D;-268807205D;1873603068D::13'
 local SVAL={-1992893169,-1946824447,-268807205,1873603068}
 local F={{'health',0x76EA10,128},{'healthLimit',0x76EA14,132},{'spirit',0x76EA18,136},
@@ -443,15 +443,24 @@ local function refresh()
 end
 local function menu()
   while true do
+    local actorReady=actorOk()
+    local statsReady=statArray()~=nil
+    local liveReady=actorReady and S.anchor and
+      D(S.anchor+0x76F360)==0xD0 and D(S.anchor+0x76F484)==0x248
+    local progress=S.classes and S.classes.Progress
+    local progressReady=progress and progress.storage and progress.storage>0x10000 and
+      D(progress.address+0x11C)==C.Progress and Q(progress.address+0xB8)==progress.storage and
+      S.anchor and D(S.anchor+0x76EBE8)==0x4C
     local n=gg.choice({
-      'SETUP / RE-SCAN',
-      'EDIT HEALTH',
-      'EDIT SPIRIT / INJURY',
-      'EDIT ATTRIBUTES',
-      'EDIT MONEY',
-      'EDIT SENTENCE / DAY / CLOCK / ALLOWANCE',
+      '⚙ SETUP / RE-SCAN',
+      lamp(S.liveHealthConfirmed and actorReady)..' EDIT HEALTH',
+      lamp(liveReady)..' EDIT SPIRIT / INJURY',
+      lamp(statsReady)..' EDIT ATTRIBUTES',
+      lamp(canEdit('bank'))..' EDIT MONEY',
+      lamp(progressReady)..' EDIT SENTENCE / DAY / CLOCK / ALLOWANCE',
       'EXIT'
-    },nil,'Hard Time III — Developer Controls v'..V)
+    },nil,'Hard Time III — Developer Controls v'..V..
+      '\n🟢 Ready / 🔴 unavailable — re-scan inside gameplay')
     if not n or n==7 then return false end
     if n==1 then
       gg.toast(refresh() and 'Player linked' or 'Player not ready; enter gameplay and re-scan')
