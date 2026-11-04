@@ -452,6 +452,7 @@ local STATS={
   {name='Stamina',index=5},{name='Attitude',index=6}
 }
 local function statArray()
+  if not S.anchor or D(S.anchor+0x76EA08)~=0x70 then return nil,nil,'Character.stat field-table entry did not match +0x70' end
   if not actorOk() or not S.star then return nil,nil,'No validated active actor' end
   local a=Q(S.star+0x70)
   if not a or a<0x10000 or a%8~=0 then return nil,nil,'Character.stat array pointer unavailable' end
@@ -512,6 +513,9 @@ end
 -- Progress offsets come from the v1.1.8 compiled field-offset table.
 -- Sentence is modified directly by the public PC cheat; direct Android write still needs HUD validation.
 local function progressExtras()
+  if not S.anchor or D(S.anchor+0x76EBE8)~=0x4C then
+    gg.alert('🔴 Progress.sentence field table mismatch (+0x4C expected).');return
+  end
   while true do
     local p=S.classes.Progress
     if not p or not p.storage or p.storage<0x10000 or
