@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0d17">
+  <meta name="description" content="Hard Time III Control Studio — an offline, standalone visual concept based on GameGuardian Developer Controls 2.1.1. No memory editing or game connection.">
+  <title>HT3 • Control Studio</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090a12;
+      --bg-2: #11111c;
+      --surface: #171824;
+      --surface-2: #1d1e2c;
+      --surface-3: #242536;
+      --chrome: rgba(32,33,49,.76);
+      --stroke: rgba(255,255,255,.095);
+      --stroke-strong: rgba(255,255,255,.16);
+      --text: #f7f6fb;
+      --muted: #a19fb3;
+      --faint: #737287;
+      --accent: #bc83ff;
+      --accent-soft: rgba(187,126,255,.14);
+      --success: #5be3b0;
+      --warn: #ffc58a;
+      --shadow: 0 24px 80px rgba(0,0,0,.26);
+      --grad: linear-gradient(115deg,#8c72ff 1%,#c76bf1 34%,#f46ba9 67%,#ffaf7a 100%);
+      --radius: 24px;
+    }
+    [data-theme="light"] {
+      color-scheme: light;
+      --bg: #f2f1f8;
+      --bg-2: #e7e6f0;
+      --surface: #fff;
+      --surface-2: #f6f4fb;
+      --surface-3: #eeecf6;
+      --chrome: rgba(255,255,255,.78);
+      --stroke: rgba(40,29,65,.095);
+      --stroke-strong: rgba(40,29,65,.18);
+      --text: #27213c;
+      --muted: #736d82;
+      --faint: #938ba2;
+      --accent: #7c44d9;
+      --accent-soft: rgba(124,68,217,.095);
+      --success: #15986b;
+      --warn: #a25e16;
+      --shadow: 0 24px 70px rgba(66,42,110,.09);
+    }
+    *,*::before,*::after {box-sizing:border-box}
+    html {scroll-behavior:smooth}
+    body {
+      margin:0; min-width:320px; min-height:100vh;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+      font-size:14px; line-height:1.45; color:var(--text); background:var(--bg);
+      -webkit-font-smoothing:antialiased;
+      background-image:radial-gradient(ellipse 44% 33% at 70% -7%,rgba(150,74,230,.19),transparent 85%),
+        radial-gradient(ellipse 28% 32% at 106% 48%,rgba(237,86,156,.105),transparent 90%),
+        radial-gradient(ellipse 29% 24% at -10% 92%,rgba(90,97,255,.11),transparent 85%);
+      background-attachment:fixed;
+    }
+    button,input {font:inherit}
+    button {cursor:pointer}
+    button:disabled {cursor:not-allowed;opacity:.48}
+    button,input { -webkit-tap-highlight-color:transparent }
+    :focus-visible {outline:3px solid rgba(182,131,255,.75);outline-offset:3px}
+    a {color:inherit}
+    .icon {width:19px;height:19px;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;fill:none;flex:none}
+    .icon.sm {width:16px;height:16px}
+    .icon.lg {width:24px;height:24px}
+    .app {
+      max-width:1630px; margin:0 auto; display:grid; min-height:100vh;
+      grid-template-columns:242px minmax(0,1fr) 286px;
+      align-items:start; gap:22px; padding:22px;
+    }
+    .glass {
+      background:var(--chrome);backdrop-filter:blur(34px) saturate(160%);
+      -webkit-backdrop-filter:blur(34px) saturate(160%);
+      border:1px solid var(--stroke-strong);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.09),var(--shadow);
+    }
+    .sidebar {
+      position:sticky;top:22px; min-height:calc(100vh - 44px);border-radius:29px;
+      padding:23px 14px; display:flex;flex-direction:column;z-index:3;overflow:hidden;
+    }
+    .sidebar::before,.inspector::before {
+      content:"";position:absolute;inset:0 0 auto;height:70px;pointer-events:none;
+      background:linear-gradient(180deg,rgba(255,255,255,.055),transparent);
+    }
+    .brand {display:flex;align-items:center;gap:11px;padding:4px 10px 27px}
+    .brand-mark {
+      display:grid;place-items:center;width:45px;height:45px;border-radius:16px;flex:none;
+      background:var(--grad);color:white;font-size:16px;font-weight:850;letter-spacing:-1px;
+      box-shadow:0 8px 24px rgba(215,88,173,.2),inset 0 1px 1px rgba(255,255,255,.6);
+      position:relative;
+    }
+    .brand-mark::after {content:"";position:absolute;inset:4px;border:1px solid rgba(255,255,255,.38);border-radius:12px;pointer-events:none}
+    .brand-name {font-size:15px;font-weight:800;letter-spacing:-.6px;line-height:1.1}
+    .brand-sub {color:var(--muted);font-size:10px;font-weight:700;letter-spacing:1.7px;margin-top:5px}
+    .nav-group {display:flex;flex-direction:column;gap:5px}
+    .nav-label {padding:9px 14px 10px;text-transform:uppercase;letter-spacing:1.8px;font-size:10px;font-weight:750;color:var(--faint)}
+    .nav-link {
+      width:100%;min-height:46px;display:flex;align-items:center;gap:12px;
+      border:1px solid transparent;color:var(--muted);background:transparent;
+      padding:0 13px;border-radius:15px;text-align:left;white-space:nowrap;
+      font-weight:650;transition:background .2s,color .2s,transform .2s;
+    }
+    .nav-link:hover {color:var(--text);background:rgba(255,255,255,.055)}
+    .nav-link.active {
+      background:linear-gradient(105deg,rgba(182,113,247,.24),rgba(246,111,173,.12));
+      border-color:rgba(208,159,255,.22);color:var(--text);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.07);
+    }
+    .nav-link.active .nav-ico {color:#d5a3ff}
+    .nav-ico {width:30px;display:grid;place-items:center}
+    .nav-link small {margin-left:auto;font-size:10px;color:var(--faint);font-weight:700}
+    .nav-sep {height:1px;background:var(--stroke);margin:18px 12px 11px}
+    .side-footer {margin-top:auto;padding:20px 8px 2px}
+    .mini-preview {
+      position:relative;border-radius:19px;padding:16px;overflow:hidden;
+      background:linear-gradient(145deg,rgba(163,103,250,.19),rgba(243,109,169,.06));
+      border:1px solid var(--stroke-strong);
+    }
+    .mini-preview::after {content:"";position:absolute;right:-28px;bottom:-44px;width:115px;height:115px;border:24px solid rgba(237,136,242,.075);border-radius:50%}
+    .tiny-cap {text-transform:uppercase;font-size:10px;font-weight:800;letter-spacing:1.5px;color:var(--faint)}
+    .mini-preview strong {display:block;font-size:14px;margin:9px 0 6px}
+    .mini-preview p {font-size:12px;color:var(--muted);margin:0;max-width:155px}
+    .version {display:flex;justify-content:space-between;color:var(--faint);font-size:11px;margin:18px 8px 0}
+    .main {min-width:0;padding:4px 0 44px}
+    .topbar {display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 24px;min-height:47px}
+    .breadcrumbs {display:flex;align-items:center;gap:9px;color:var(--faint);font-size:11px;font-weight:800;letter-spacing:1.35px;text-transform:uppercase}
+    .breadcrumbs b {color:var(--muted)}
+    .top-actions {display:flex;gap:9px;align-items:center}
+    .top-pill,.tool-btn {
+      display:inline-flex;align-items:center;justify-content:center;gap:8px;
+      min-height:39px;padding:0 13px;border-radius:14px;
+      background:var(--chrome);border:1px solid var(--stroke);
+      color:var(--text);font-size:12px;font-weight:750;
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    }
+    .top-pill {color:var(--muted)}
+    .pin {width:7px;height:7px;display:inline-block;border-radius:99px;background:var(--warn);box-shadow:0 0 0 4px rgba(255,184,95,.10)}
+    .tool-btn {width:40px;padding:0}
+    .tool-btn:hover,.top-pill:hover {border-color:var(--stroke-strong);background:var(--surface-3)}
+    .hero {
+      border-radius:30px;min-height:244px;position:relative;overflow:hidden;
+      padding:30px 32px;display:flex;align-items:center;justify-content:space-between;gap:22px;
+      background:linear-gradient(112deg,#29224b 0%,#492e70 41%,#9d437e 77%,#d3767f 115%);
+      border:1px solid rgba(255,255,255,.18);
+      box-shadow:0 25px 65px rgba(88,43,127,.19),inset 0 1px rgba(255,255,255,.23);
+      color:#fff;
+    }
+    .hero::before {content:"";position:absolute;inset:0;background:radial-gradient(circle at 83% 17%,rgba(255,255,255,.19),transparent 34%),linear-gradient(155deg,rgba(255,255,255,.08),transparent 45%);pointer-events:none}
+    .hero::after {content:"";position:absolute;right:-48px;top:-116px;width:370px;height:370px;border-radius:50%;border:1px solid rgba(255,255,255,.23);box-shadow:0 0 0 44px rgba(255,255,255,.035),0 0 0 90px rgba(255,255,255,.022),inset 0 0 60px rgba(255,255,255,.05)}
+    .hero-copy {position:relative;z-index:1;max-width:470px}
+    .eyebrow {display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase}
+    .eyebrow .spark {width:8px;height:8px;border-radius:2px;transform:rotate(45deg);background:#ffcfeb}
+    .hero h1 {font-size:clamp(31px,3.2vw,46px);letter-spacing:-2px;line-height:1.06;margin:17px 0 12px;font-weight:790}
+    .hero p {max-width:420px;color:rgba(255,255,255,.81);font-size:14px;line-height:1.6;margin:0}
+    .hero-cta {margin-top:24px;display:flex;gap:9px;flex-wrap:wrap}
+    .btn {
+      display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:42px;
+      padding:0 17px;border-radius:14px;border:1px solid var(--stroke-strong);
+      color:var(--text);background:var(--surface-2);font-size:12px;font-weight:780;
+      transition:transform .18s,filter .18s,background .18s;
+    }
+    .btn:hover {transform:translateY(-2px);filter:brightness(1.07)}
+    .btn.primary {background:var(--grad);border-color:rgba(255,255,255,.26);color:white;box-shadow:0 6px 24px rgba(203,95,198,.19)}
+    .btn.white {background:#fff;color:#332b4b;border-color:#fff}
+    .btn.ghost-white {color:#fff;background:rgba(255,255,255,.10);border-color:rgba(255,255,255,.25);backdrop-filter:blur(14px)}
+    .btn.danger {color:#ffb5c8;background:rgba(248,97,139,.10);border-color:rgba(248,97,139,.2)}
+    .hero-art {width:170px;height:170px;flex:none;position:relative;z-index:1;display:grid;place-items:center;margin-right:20px}
+    .art-disc {width:144px;height:144px;display:grid;place-items:center;border-radius:50%;border:1px solid rgba(255,255,255,.30);background:linear-gradient(130deg,rgba(255,255,255,.19),rgba(255,255,255,.035));backdrop-filter:blur(18px);box-shadow:inset 0 1px rgba(255,255,255,.35),0 20px 40px rgba(65,26,88,.2);transform:rotate(-13deg)}
+    .art-disc b {font-size:44px;letter-spacing:-5px;color:white;font-weight:750;text-shadow:0 4px 30px rgba(255,255,255,.3)}
+    .art-satellite {position:absolute;border-radius:15px;background:rgba(255,255,255,.17);border:1px solid rgba(255,255,255,.35);backdrop-filter:blur(8px);box-shadow:inset 0 1px rgba(255,255,255,.32)}
+    .art-satellite.one {right:-9px;top:18px;width:50px;height:50px;transform:rotate(20deg)}
+    .art-satellite.two {left:-12px;bottom:20px;width:34px;height:34px;transform:rotate(-24deg)}
+    .section-heading {display:flex;align-items:end;justify-content:space-between;gap:15px;margin:29px 0 16px}
+    .section-heading h2,.detail-head h2 {font-size:21px;letter-spacing:-.8px;margin:0;font-weight:790}
+    .section-heading p,.detail-head p {margin:6px 0 0;color:var(--muted);font-size:12px}
+    .subtle-link {border:0;background:none;color:var(--accent);font-size:12px;font-weight:750;display:inline-flex;align-items:center;gap:5px;padding:8px 0}
+    .module-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .module {
+      min-height:168px;padding:21px;position:relative;overflow:hidden;text-align:left;
+      border-radius:24px;border:1px solid var(--stroke);
+      background:var(--surface);color:var(--text);
+      transition:transform .23s,border-color .23s,box-shadow .23s;
+      box-shadow:inset 0 1px rgba(255,255,255,.025);
+    }
+    .module:hover {transform:translateY(-4px);border-color:rgba(207,133,255,.35);box-shadow:0 20px 36px rgba(0,0,0,.10)}
+    .module::after {content:"";position:absolute;width:170px;height:170px;right:-90px;top:-85px;border-radius:50%;background:var(--tone);opacity:.15;filter:blur(22px);pointer-events:none}
+    .module-top {display:flex;justify-content:space-between;align-items:start}
+    .module-ico {width:47px;height:47px;border-radius:16px;display:grid;place-items:center;background:var(--tone-soft);color:var(--tone)}
+    .module-go {width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--surface-2);color:var(--muted)}
+    .module h3 {font-size:16px;letter-spacing:-.45px;margin:20px 0 4px}
+    .module p {font-size:12px;color:var(--muted);margin:0}
+    .module-bottom {display:flex;align-items:center;justify-content:space-between;margin-top:16px;color:var(--faint);font-size:11px}
+    .module-bottom strong {color:var(--text);font-size:12px;font-weight:780}
+    .detail-head {display:flex;align-items:center;gap:16px;margin:4px 0 20px}
+    .detail-head .detail-ico {height:56px;width:56px;display:grid;place-items:center;border-radius:19px;color:#eed5ff;background:linear-gradient(130deg,#6951c0,#bb60ae);box-shadow:0 10px 28px rgba(137,86,197,.2)}
+    .screen {display:none;animation:appear .25s ease both}
+    .screen.active {display:block}
+    @keyframes appear {from {opacity:.3;transform:translateY(9px)} to {opacity:1;transform:none}}
+    .detail-card {
+      border-radius:25px;padding:25px;background:var(--surface);border:1px solid var(--stroke);
+      box-shadow:inset 0 1px rgba(255,255,255,.025);
+    }
+    .detail-grid {display:grid;grid-template-columns:minmax(0,1.4fr) minmax(220px,.86fr);gap:15px;align-items:start}
+    .card-title {font-size:15px;font-weight:800;letter-spacing:-.3px;margin:0 0 4px}
+    .card-caption {color:var(--muted);font-size:12px;line-height:1.55;margin:0}
+    .tag {display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:6px 10px;font-weight:780;font-size:10px;letter-spacing:.2px;background:var(--accent-soft);color:var(--accent)}
+    .tag.neutral {background:var(--surface-3);color:var(--muted)}
+    .tag.amber {background:rgba(255,179,94,.1);color:var(--warn)}
+    .card-head {display:flex;gap:10px;justify-content:space-between;align-items:start;margin-bottom:23px}
+    .form-block {padding:19px 0;border-bottom:1px solid var(--stroke)}
+    .form-block:first-of-type {padding-top:0}
+    .form-block:last-child {border-bottom:0;padding-bottom:0}
+    .form-label {display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+    .form-label label {font-size:13px;font-weight:750}
+    .hint {font-size:11px;color:var(--faint);margin-top:7px}
+    .range-row {display:grid;grid-template-columns:minmax(0,1fr) 94px;gap:17px;align-items:center}
+    input[type="range"] {
+      appearance:none;-webkit-appearance:none;width:100%;height:6px;border-radius:999px;outline:none;
+      background:linear-gradient(90deg,#9779ff 0%,#ea72bc var(--fill,60%),var(--surface-3) var(--fill,60%),var(--surface-3) 100%);
+    }
+    input[type="range"]::-webkit-slider-thumb {appearance:none;-webkit-appearance:none;width:19px;height:19px;border-radius:50%;background:#fff;border:4px solid #c57dee;box-shadow:0 3px 12px rgba(176,82,230,.4);cursor:grab}
+    input[type="range"]::-moz-range-thumb {width:13px;height:13px;border-radius:50%;background:#fff;border:4px solid #c57dee;box-shadow:0 3px 12px rgba(176,82,230,.4);cursor:grab}
+    .number {
+      width:100%;height:41px;border:1px solid var(--stroke-strong);outline:none;
+      background:var(--surface-2);color:var(--text);padding:0 10px;border-radius:12px;
+      text-align:right;font-size:14px;font-weight:780;font-variant-numeric:tabular-nums;
+    }
+    .number:focus {border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+    .number.wide {text-align:left}
+    .explainer {color:var(--muted);line-height:1.65;font-size:12px;margin:15px 0 0}
+    .preview-large {
+      text-align:center;padding:22px 14px 17px;border-radius:22px;
+      background:linear-gradient(145deg,var(--accent-soft),transparent 75%);border:1px solid var(--stroke);
+      margin-top:22px;
+    }
+    .ring {
+      --progress:82; width:164px;height:164px;position:relative;margin:0 auto;
+      display:grid;place-items:center;border-radius:50%;
+      background:conic-gradient(#df79c4 0%,#9b7af9 calc(var(--progress) * 1%),var(--surface-3) calc(var(--progress) * 1%),var(--surface-3) 100%);
+      box-shadow:0 7px 35px rgba(148,87,230,.11);
+    }
+    .ring::before {content:"";position:absolute;inset:12px;border-radius:50%;background:var(--surface);box-shadow:inset 0 1px 12px rgba(0,0,0,.08)}
+    .ring-core {position:relative;z-index:1}
+    .ring-number {font-size:36px;letter-spacing:-1.8px;font-weight:820;line-height:1}
+    .ring-unit {color:var(--faint);font-size:12px;font-weight:700;margin-top:7px}
+    .preview-large p {margin:19px 0 2px;font-weight:750}
+    .preview-large small {color:var(--muted)}
+    .note {
+      display:flex;gap:12px;padding:16px;border:1px solid var(--stroke);border-radius:17px;
+      margin-top:16px;background:var(--surface-2);color:var(--muted);font-size:12px;line-height:1.6;
+    }
+    .note .icon {color:var(--accent)}
+    .stack {display:flex;flex-direction:column;gap:15px}
+    .metric-duo {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .metric-tile {border:1px solid var(--stroke);background:var(--surface-2);border-radius:18px;padding:20px}
+    .metric-tile strong {display:block;font-size:27px;letter-spacing:-1px;margin:11px 0 4px}
+    .metric-tile span {color:var(--muted);font-size:12px}
+    .attr-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .attr-card {background:var(--surface);border:1px solid var(--stroke);border-radius:22px;padding:20px}
+    .attr-top {display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:21px}
+    .attr-name {font-size:13px;font-weight:770}
+    .attr-index {font-size:10px;color:var(--faint);font-weight:770;letter-spacing:.5px}
+    .attr-card .range-row {grid-template-columns:minmax(0,1fr) 72px;gap:12px}
+    .attr-card .number {height:35px}
+    .money-card {
+      position:relative;overflow:hidden;border-radius:25px;padding:29px;
+      background:linear-gradient(115deg,#49316e,#854685 62%,#bb638c);
+      color:white;border:1px solid rgba(255,255,255,.19);
+    }
+    .money-card::after {content:"";position:absolute;width:280px;height:280px;border-radius:50%;top:-180px;right:-40px;border:52px solid rgba(255,255,255,.06)}
+    .money-card .tiny-cap {color:rgba(255,255,255,.7)}
+    .money-total {font-size:clamp(38px,5vw,56px);letter-spacing:-2px;font-weight:800;margin:17px 0 7px;overflow-wrap:anywhere}
+    .money-card p {color:rgba(255,255,255,.74);font-size:12px;margin:0}
+    .preset-row {display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 0}
+    .preset {border:1px solid var(--stroke);background:var(--surface-2);border-radius:12px;color:var(--text);padding:10px 13px;font-size:12px;font-weight:760}
+    .preset:hover {border-color:var(--accent);color:var(--accent)}
+    .clock {
+      border-radius:21px;padding:24px;background:linear-gradient(125deg,rgba(147,114,255,.15),rgba(241,115,163,.08));
+      border:1px solid var(--stroke);text-align:center;
+    }
+    .clock-digits {font-size:46px;letter-spacing:-2.5px;font-variant-numeric:tabular-nums;font-weight:800}
+    .clock-sub {font-size:12px;color:var(--muted);margin-top:5px}
+    .field-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .field {display:flex;flex-direction:column;gap:8px}
+    .field label {font-size:12px;font-weight:780}
+    .field small {font-size:11px;color:var(--faint)}
+    .status-row {
+      display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 0;border-bottom:1px solid var(--stroke);
+    }
+    .status-row:last-child {border-bottom:0}
+    .status-row strong {font-size:12px}
+    .status-row p {margin:4px 0 0;color:var(--muted);font-size:11px}
+    .status-bubble {background:rgba(255,182,97,.11);color:var(--warn);padding:7px 10px;font-size:10px;font-weight:800;border-radius:99px;white-space:nowrap}
+    .status-bubble.soft {background:var(--surface-3);color:var(--muted)}
+    details {border:1px solid var(--stroke);border-radius:16px;overflow:hidden;background:var(--surface-2)}
+    summary {padding:14px 16px;font-weight:750;font-size:12px;cursor:pointer}
+    .code-note {font:11px/1.8 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted);padding:0 16px 15px}
+    .inspector {
+      position:sticky;top:22px;min-height:calc(100vh - 44px);border-radius:29px;
+      padding:22px 17px;overflow:hidden;
+    }
+    .inspector-head {display:flex;align-items:center;justify-content:space-between;padding:5px 5px 21px}
+    .inspector-head h3 {margin:0;font-size:14px;letter-spacing:-.3px}
+    .profile-card {
+      padding:19px 15px;background:var(--surface);border:1px solid var(--stroke);border-radius:23px;text-align:center;
+    }
+    .avatar {
+      width:67px;height:67px;margin:0 auto 12px;border-radius:50%;padding:3px;background:var(--grad);
+      box-shadow:0 8px 26px rgba(207,92,187,.18);
+    }
+    .avatar-inner {height:100%;border-radius:50%;display:grid;place-items:center;background:var(--surface);color:var(--accent)}
+    .avatar-inner .icon {width:33px;height:33px}
+    .profile-card h4 {font-size:14px;letter-spacing:-.2px;margin:0 0 3px}
+    .profile-card p {font-size:11px;color:var(--muted);margin:0}
+    .profile-stats {display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:16px}
+    .profile-stats div {border-radius:13px;background:var(--surface-2);padding:10px 6px}
+    .profile-stats strong {display:block;font-size:16px;font-variant-numeric:tabular-nums}
+    .profile-stats span {font-size:10px;color:var(--faint)}
+    .inspector-block {padding:23px 5px 0}
+    .inspector-block h4 {margin:0 0 14px;font-size:12px;letter-spacing:.1px}
+    .readout {display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--stroke);font-size:12px;color:var(--muted)}
+    .readout strong {color:var(--text);font-size:12px;font-variant-numeric:tabular-nums}
+    .readout:last-child {border-bottom:0}
+    .inspector-callout {padding:16px;margin-top:23px;border-radius:18px;border:1px solid rgba(190,136,255,.20);background:linear-gradient(120deg,var(--accent-soft),transparent);font-size:12px;line-height:1.6;color:var(--muted)}
+    .inspector-callout strong {display:block;color:var(--text);margin-bottom:5px;font-size:12px}
+    .footline {font-size:11px;color:var(--faint);display:flex;justify-content:space-between;gap:10px;margin:24px 3px 0;padding-top:18px;border-top:1px solid var(--stroke)}
+    .toast {
+      position:fixed;bottom:25px;left:50%;transform:translate(-50%,20px);
+      opacity:0;pointer-events:none;z-index:20;max-width:min(90vw,530px);
+      color:#fff;padding:13px 18px;border-radius:16px;font-size:12px;font-weight:680;
+      background:#282335;border:1px solid rgba(255,255,255,.16);
+      box-shadow:0 15px 50px rgba(0,0,0,.33);transition:opacity .2s,transform .2s;text-align:center;
+    }
+    .toast.show {transform:translate(-50%,0);opacity:1}
+    dialog {
+      background:var(--surface);color:var(--text);border:1px solid var(--stroke-strong);
+      width:min(92vw,410px);border-radius:24px;padding:26px;box-shadow:0 30px 100px rgba(0,0,0,.4);
+    }
+    dialog::backdrop {background:rgba(3,3,10,.7);backdrop-filter:blur(8px)}
+    dialog h3 {font-size:20px;letter-spacing:-.6px;margin:0 0 8px}
+    dialog p {font-size:13px;line-height:1.6;color:var(--muted);margin:0 0 22px}
+    .dialog-actions {display:flex;gap:10px;justify-content:flex-end}
+    .compact-metric {color:var(--faint);font-size:11px}
+    .accent-text {color:var(--accent)}
+    @media (max-width:1250px) {
+      .app {grid-template-columns:228px minmax(0,1fr);gap:18px}
+      .inspector {display:none}
+    }
+    @media (max-width:800px) {
+      .app {display:block;padding:12px 12px 28px}
+      .sidebar {min-height:auto;position:relative;top:auto;padding:13px;border-radius:24px;margin-bottom:18px}
+      .brand {padding:2px 4px 14px}
+      .brand-mark {width:39px;height:39px;border-radius:14px}
+      .sidebar .nav-label,.sidebar .nav-sep,.side-footer {display:none}
+      .nav-group {flex-direction:row;gap:7px;overflow-x:auto;scrollbar-width:none;padding-bottom:3px}
+      .nav-group::-webkit-scrollbar {display:none}
+      .sidebar nav {display:flex;flex-direction:column;gap:7px}
+      .nav-link {width:auto;padding:0 13px;min-height:42px;font-size:12px}
+      .nav-ico {width:18px}
+      .nav-link small {display:none}
+      .main {padding:0}
+      .topbar {margin:0 4px 17px}
+      .hero {min-height:226px;padding:26px}
+      .hero-art {margin:0;width:120px;height:120px}
+      .art-disc {width:108px;height:108px}
+      .art-disc b {font-size:34px}
+      .art-satellite.one {width:39px;height:39px}
+    }
+    @media (max-width:570px) {
+      .topbar .top-pill {display:none}
+      .hero {padding:28px 23px 29px;min-height:230px}
+      .hero-copy {max-width:100%}
+      .hero h1 {font-size:36px}
+      .hero-art {display:none}
+      .module-grid,.detail-grid,.attr-grid {grid-template-columns:1fr}
+      .module {min-height:158px}
+      .section-heading {align-items:start}
+      .section-heading h2 {font-size:20px}
+      .detail-card {padding:20px}
+      .detail-head .detail-ico {width:48px;height:48px}
+      .field-grid {grid-template-columns:repeat(2,minmax(0,1fr))}
+      .footline {flex-wrap:wrap}
+      .breadcrumbs {font-size:10px;gap:6px}
+    }
+    @media (prefers-reduced-motion:reduce) {
+      *,*::before,*::after {scroll-behavior:auto!important;transition:none!important;animation:none!important}
+    }
+  </style>
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+    <symbol id="ic-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+    <symbol id="ic-heart" viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></symbol>
+    <symbol id="ic-activity" viewBox="0 0 24 24"><path d="M2 12h5l3-8 4 16 3-8h5"/></symbol>
+    <symbol id="ic-spark" viewBox="0 0 24 24"><path d="m12 2 2.5 7.5L22 12l-7.5 2.5L12 22l-2.5-7.5L2 12l7.5-2.5L12 2Z"/></symbol>
+    <symbol id="ic-wallet" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 9h18M16 14h2M7 5V3h11"/></symbol>
+    <symbol id="ic-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></symbol>
+    <symbol id="ic-sliders" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--surface)"/><circle cx="16" cy="17" r="3" fill="var(--surface)"/></symbol>
+    <symbol id="ic-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="ic-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="ic-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="ic-moon" viewBox="0 0 24 24"><path d="M20.5 15.3A8.7 8.7 0 0 1 8.7 3.5 8.8 8.8 0 1 0 20.5 15.3Z"/></symbol>
+    <symbol id="ic-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/></symbol>
+    <symbol id="ic-reset" viewBox="0 0 24 24"><path d="M4 11a8 8 0 1 1 2 6M4 5v6h6"/></symbol>
+    <symbol id="ic-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="ic-shield" viewBox="0 0 24 24"><path d="M12 2 20 6v6c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6l8-4Z"/><path d="m9 12 2 2 4-4"/></symbol>
+  </svg>
+
+  <div class="app">
+    <aside class="sidebar glass" aria-label="Application navigation">
+      <div class="brand">
+        <div class="brand-mark">HT</div>
+        <div><div class="brand-name">Control Studio</div><div class="brand-sub">HARD TIME III</div></div>
+      </div>
+      <nav aria-label="Control groups">
+        <div class="nav-group">
+          <div class="nav-label">Workspace</div>
+          <button class="nav-link active" data-go="overview"><span class="nav-ico"><svg class="icon"><use href="#ic-grid"/></svg></span>Overview<small>01</small></button>
+          <button class="nav-link" data-go="health"><span class="nav-ico"><svg class="icon"><use href="#ic-heart"/></svg></span>Health</button>
+          <button class="nav-link" data-go="state"><span class="nav-ico"><svg class="icon"><use href="#ic-activity"/></svg></span>Spirit &amp; injury</button>
+          <button class="nav-link" data-go="attributes"><span class="nav-ico"><svg class="icon"><use href="#ic-spark"/></svg></span>Attributes</button>
+          <button class="nav-link" data-go="money"><span class="nav-ico"><svg class="icon"><use href="#ic-wallet"/></svg></span>Money</button>
+          <button class="nav-link" data-go="progress"><span class="nav-ico"><svg class="icon"><use href="#ic-clock"/></svg></span>Progress</button>
+        </div>
+        <div class="nav-sep"></div>
+        <div class="nav-group">
+          <div class="nav-label">System</div>
+          <button class="nav-link" data-go="setup"><span class="nav-ico"><svg class="icon"><use href="#ic-sliders"/></svg></span>Setup &amp; notes</button>
+        </div>
+      </nav>
+      <div class="side-footer">
+        <div class="mini-preview">
+          <span class="tiny-cap">Design workspace</span>
+          <strong>One living prototype.</strong>
+          <p>Refine this interface through a single GitHub file.</p>
+        </div>
+        <div class="version"><span>UI concept 1.0</span><span>Source GG 2.1.1</span></div>
+      </div>
+    </aside>
+
+    <main class="main" id="main">
+      <header class="topbar">
+        <div class="breadcrumbs"><span>HT3</span><svg class="icon sm"><use href="#ic-chevron"/></svg><b id="crumb">Overview</b></div>
+        <div class="top-actions">
+          <span class="top-pill"><span class="pin"></span>Visual prototype</span>
+          <button class="tool-btn" id="theme-btn" aria-label="Toggle light and dark theme" title="Switch theme"><svg class="icon"><use href="#ic-sun" id="theme-icon"/></svg></button>
+          <button class="tool-btn" data-go="setup" aria-label="View design notes" title="Design notes"><svg class="icon"><use href="#ic-info"/></svg></button>
+        </div>
+      </header>
+
+      <section class="screen active" data-screen="overview">
+        <div class="hero">
+          <div class="hero-copy">
+            <div class="eyebrow"><span class="spark"></span> Developer controls · Redefined</div>
+            <h1>One beautiful<br>control space.</h1>
+            <p>A refined, organized concept for Hard Time III. Every module in one place, without the clutter of a raw GG menu.</p>
+            <div class="hero-cta">
+              <button class="btn white" data-go="health">Explore controls <svg class="icon sm"><use href="#ic-arrow"/></svg></button>
+              <button class="btn ghost-white" data-go="setup">Design notes</button>
+            </div>
+          </div>
+          <div class="hero-art" aria-hidden="true"><div class="art-disc"><b>III</b></div><div class="art-satellite one"></div><div class="art-satellite two"></div></div>
+        </div>
+        <div class="section-heading">
+          <div><h2>Control library</h2><p>Six carefully organized modules. All values below are demo-only.</p></div>
+          <span class="tag neutral">6 modules</span>
+        </div>
+        <div class="module-grid">
+          <button class="module" data-go="health" style="--tone:#f47eaa;--tone-soft:rgba(244,126,170,.13)">
+            <div class="module-top"><span class="module-ico"><svg class="icon lg"><use href="#ic-heart"/></svg></span><span class="module-go"><svg class="icon sm"><use href="#ic-arrow"/></svg></span></div>
+            <h3>Health &amp; vitality</h3><p>Live health and maximum health</p>
+            <div class="module-bottom"><span>PLAYER</span><strong><span data-output="health">82</span> / <span data-output="healthLimit">100</span></strong></div>
+          </button>
+          <button class="module" data-go="state" style="--tone:#9d91ff;--tone-soft:rgba(157,145,255,.14)">
+            <div class="module-top"><span class="module-ico"><svg class="icon lg"><use href="#ic-activity"/></svg></span><span class="module-go"><svg class="icon sm"><use href="#ic-arrow"/></svg></span></div>
+            <h3>Spirit &amp; injury</h3><p>Live player state controls</p>
+            <div class="module-bottom"><span>CONDITION</span><strong><span data-output="spirit">76</span> spirit</strong></div>
+          </button>
+          <button class="module" data-go="attributes" style="--tone:#e477f0;--tone-soft:rgba(228,119,240,.13)">
+            <div class="module-top"><span class="module-ico"><svg class="icon lg"><use href="#ic-spark"/></svg></span><span class="module-go"><svg class="icon sm"><use href="#ic-arrow"/></svg></span></div>
+            <h3>Attributes</h3><p>Six character skill dimensions</p>
+            <div class="module-bottom"><span>CHARACTER</span><strong>6 editable stats</strong></div>
+          </button>
+          <button class="module" data-go="money" style="--tone:#ffb77d;--tone-soft:rgba(255,183,125,.13)">
+            <div class="module-top"><span class="module-ico"><svg class="icon lg"><use href="#ic-wallet"/></svg></span><span class="module-go"><svg class="icon sm"><use href="#ic-arrow"/></svg></span></div>
+            <h3>Money</h3><p>Bank balance in one clear view</p>
+            <div class="module-bottom"><span>PROGRESS</span><strong data-output="bankCurrency">$1,250</strong></div>
+          </button>
+          <button class="module" data-go="progress" style="--tone:#6bdac1;--tone-soft:rgba(107,218,193,.13)">
+            <div class="module-top"><span class="module-ico"><svg class="icon lg"><use href="#ic-clock"/></svg></span><span class="module-go"><svg class="icon sm"><use href="#ic-arrow"/></svg></span></div>
+            <h3>Progress &amp; time</h3><p>Sentence, day, clock, allowance</p>
+            <div class="module-bottom"><span>GAME WORLD</span><strong>Day <span data-output="day">7</span></strong></div>
+          </button>
+          <button class="module" data-go="setup" style="--tone:#9ca9c5;--tone-soft:rgba(156,169,197,.12)">
+            <div class="module-top"><span class="module-ico"><svg class="icon lg"><use href="#ic-sliders"/></svg></span><span class="module-go"><svg class="icon sm"><use href="#ic-arrow"/></svg></span></div>
+            <h3>Setup &amp; notes</h3><p>Source reference and design scope</p>
+            <div class="module-bottom"><span>PROTOTYPE</span><strong>Offline UI</strong></div>
+          </button>
+        </div>
+        <div class="note"><svg class="icon"><use href="#ic-info"/></svg><div><strong>Presentation layer only.</strong> Controls let you explore the design and edit local sample values. This page never connects to GameGuardian, an APK, or device memory.</div></div>
+      </section>
+
+      <section class="screen" data-screen="health">
+        <div class="detail-head"><div class="detail-ico"><svg class="icon lg"><use href="#ic-heart"/></svg></div><div><h2>Health &amp; vitality</h2><p>Player survival, shown with calm and immediate clarity.</p></div></div>
+        <div class="detail-grid">
+          <div class="detail-card">
+            <div class="card-head"><div><h3 class="card-title">Health controls</h3><p class="card-caption">Adjust mock values to judge layout and interaction.</p></div><span class="tag amber">Demo only</span></div>
+            <div class="form-block">
+              <div class="form-label"><label for="health-range">Current health</label><span class="compact-metric">Live actor · concept</span></div>
+              <div class="range-row"><input id="health-range" type="range" data-key="health" min="0" max="100" step="1" aria-label="Current health preview"><input class="number" data-key="health" type="number" min="0" max="1000000" step="1" aria-label="Current health number"></div>
+              <p class="hint">Preview range follows the health limit.</p>
+            </div>
+            <div class="form-block">
+              <div class="form-label"><label for="healthLimit">Maximum health</label><span class="compact-metric">Health cap</span></div>
+              <input class="number wide" id="healthLimit" data-key="healthLimit" type="number" min="1" max="1000000" step="1">
+              <p class="hint">Allowed mock range: 1–1,000,000.</p>
+            </div>
+            <div class="note"><svg class="icon"><use href="#ic-shield"/></svg><div>The Lua source distinguishes stored character health from live actor health. This design prioritizes the live-health control and keeps the maximum visible as supporting context.</div></div>
+          </div>
+          <div class="detail-card">
+            <div class="card-head"><div><h3 class="card-title">Player preview</h3><p class="card-caption">A visual-only health gauge.</p></div></div>
+            <div class="preview-large"><div class="ring" id="health-ring"><div class="ring-core"><div class="ring-number"><span data-output="healthPct">82</span>%</div><div class="ring-unit">HEALTH</div></div></div><p>Vitality</p><small><span data-output="health">82</span> of <span data-output="healthLimit">100</span> points</small></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="state">
+        <div class="detail-head"><div class="detail-ico"><svg class="icon lg"><use href="#ic-activity"/></svg></div><div><h2>Spirit &amp; injury</h2><p>Two related player-state controls, separated for clarity.</p></div></div>
+        <div class="stack">
+          <div class="metric-duo">
+            <div class="metric-tile"><span class="tiny-cap">Spirit</span><strong><span data-output="spirit">76</span><span class="compact-metric"> / 100</span></strong><span>Player morale preview</span></div>
+            <div class="metric-tile"><span class="tiny-cap">Injury</span><strong data-output="injury">4</strong><span>Injury level preview</span></div>
+          </div>
+          <div class="detail-card">
+            <div class="card-head"><div><h3 class="card-title">Player condition</h3><p class="card-caption">An uncluttered alternative to nested prompts.</p></div><span class="tag amber">Demo only</span></div>
+            <div class="form-block"><div class="form-label"><label for="spirit-range">Spirit</label><span class="compact-metric">0–100</span></div><div class="range-row"><input id="spirit-range" type="range" data-key="spirit" min="0" max="100" step="1"><input class="number" type="number" data-key="spirit" min="0" max="100" step="1" aria-label="Spirit number"></div></div>
+            <div class="form-block"><div class="form-label"><label for="injury-range">Injury</label><span class="compact-metric">0–1,000</span></div><div class="range-row"><input id="injury-range" type="range" data-key="injury" min="0" max="1000" step="1"><input class="number" type="number" data-key="injury" min="0" max="1000" step="1" aria-label="Injury number"></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="attributes">
+        <div class="detail-head"><div class="detail-ico"><svg class="icon lg"><use href="#ic-spark"/></svg></div><div><h2>Attributes</h2><p>Six skill dimensions, each given its own clean control.</p></div></div>
+        <div class="card-head" style="margin:0 0 15px"><p class="card-caption">Adjust values from 1–99. This is local UI state only.</p><span class="tag amber">Demo only</span></div>
+        <div class="attr-grid">
+          <div class="attr-card"><div class="attr-top"><span class="attr-name">Reputation</span><span class="attr-index">01 / 06</span></div><div class="range-row"><input type="range" min="1" max="99" data-key="reputation" aria-label="Reputation slider"><input type="number" class="number" min="1" max="99" data-key="reputation" aria-label="Reputation number"></div></div>
+          <div class="attr-card"><div class="attr-top"><span class="attr-name">Strength</span><span class="attr-index">02 / 06</span></div><div class="range-row"><input type="range" min="1" max="99" data-key="strength" aria-label="Strength slider"><input type="number" class="number" min="1" max="99" data-key="strength" aria-label="Strength number"></div></div>
+          <div class="attr-card"><div class="attr-top"><span class="attr-name">Skill</span><span class="attr-index">03 / 06</span></div><div class="range-row"><input type="range" min="1" max="99" data-key="skill" aria-label="Skill slider"><input type="number" class="number" min="1" max="99" data-key="skill" aria-label="Skill number"></div></div>
+          <div class="attr-card"><div class="attr-top"><span class="attr-name">Agility</span><span class="attr-index">04 / 06</span></div><div class="range-row"><input type="range" min="1" max="99" data-key="agility" aria-label="Agility slider"><input type="number" class="number" min="1" max="99" data-key="agility" aria-label="Agility number"></div></div>
+          <div class="attr-card"><div class="attr-top"><span class="attr-name">Stamina</span><span class="attr-index">05 / 06</span></div><div class="range-row"><input type="range" min="1" max="99" data-key="stamina" aria-label="Stamina slider"><input type="number" class="number" min="1" max="99" data-key="stamina" aria-label="Stamina number"></div></div>
+          <div class="attr-card"><div class="attr-top"><span class="attr-name">Attitude</span><span class="attr-index">06 / 06</span></div><div class="range-row"><input type="range" min="1" max="99" data-key="attitude" aria-label="Attitude slider"><input type="number" class="number" min="1" max="99" data-key="attitude" aria-label="Attitude number"></div></div>
+        </div>
+        <div class="note"><svg class="icon"><use href="#ic-info"/></svg><div>The labels and 1–99 entry range mirror the Lua menu. The values here are design samples, not character stats read from the game.</div></div>
+      </section>
+
+      <section class="screen" data-screen="money">
+        <div class="detail-head"><div class="detail-ico"><svg class="icon lg"><use href="#ic-wallet"/></svg></div><div><h2>Money</h2><p>A focused money panel with readable currency presentation.</p></div></div>
+        <div class="stack">
+          <div class="money-card"><span class="tiny-cap">Sample bank balance</span><div class="money-total" data-output="bankCurrency">$1,250</div><p>Visual preview · not connected to game progress</p></div>
+          <div class="detail-card"><div class="card-head"><div><h3 class="card-title">Balance designer</h3><p class="card-caption">Try presets to preview formatting and spacing.</p></div><span class="tag amber">Demo only</span></div>
+            <div class="field"><label for="bank">Bank balance</label><input id="bank" class="number wide" type="number" min="0" max="2000000000" step="1" data-key="bank"><small>Integer from 0 to 2,000,000,000.</small></div>
+            <div class="preset-row"><button class="preset" data-money="1000">$1,000</button><button class="preset" data-money="10000">$10,000</button><button class="preset" data-money="100000">$100,000</button><button class="preset" data-money="1000000">$1 million</button></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="progress">
+        <div class="detail-head"><div class="detail-ico"><svg class="icon lg"><use href="#ic-clock"/></svg></div><div><h2>Progress &amp; time</h2><p>Sentence, calendar, simulated clock and allowance.</p></div></div>
+        <div class="detail-grid">
+          <div class="detail-card">
+            <div class="card-head"><div><h3 class="card-title">World progression</h3><p class="card-caption">A grouped form replaces repetitive menus.</p></div><span class="tag amber">Demo only</span></div>
+            <div class="field-grid">
+              <div class="field"><label for="sentence">Sentence days</label><input class="number wide" id="sentence" data-key="sentenceDays" min="0" max="36525" type="number" step="1"><small>0–36,525 days</small></div>
+              <div class="field"><label for="day">Current day</label><input class="number wide" id="day" data-key="day" min="0" max="100000" type="number" step="1"><small>0–100,000</small></div>
+              <div class="field"><label for="hours">Hours</label><input class="number wide" id="hours" data-key="hours" min="0" max="23" type="number" step="1"><small>24-hour format</small></div>
+              <div class="field"><label for="minutes">Minutes</label><input class="number wide" id="minutes" data-key="minutes" min="0" max="59" type="number" step="1"><small>0–59 minutes</small></div>
+              <div class="field" style="grid-column:1/-1"><label for="allowance">Allowance</label><input class="number wide" id="allowance" data-key="allowance" min="0" max="2000000000" type="number" step="1"><small>Integer from 0 to 2,000,000,000.</small></div>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="clock"><div class="tiny-cap">In-game clock · mock</div><div class="clock-digits" data-output="clock">14:35</div><div class="clock-sub">Day <span data-output="day">7</span></div></div>
+            <div class="detail-card"><h3 class="card-title">Sentence preview</h3><p class="card-caption" style="margin-top:9px"><strong class="accent-text" style="font-size:26px" data-output="sentenceDays">30</strong> remaining-day sample</p><p class="explainer">The reference Lua warns that simulation may immediately overwrite clock-related values. No simulation runs in this HTML prototype.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="setup">
+        <div class="detail-head"><div class="detail-ico"><svg class="icon lg"><use href="#ic-sliders"/></svg></div><div><h2>Setup &amp; design notes</h2><p>Everything important about the prototype, without debugging clutter.</p></div></div>
+        <div class="detail-grid">
+          <div class="detail-card">
+            <div class="card-head"><div><h3 class="card-title">Prototype status</h3><p class="card-caption">An honest representation of capabilities.</p></div><span class="tag amber">Offline only</span></div>
+            <div class="status-row"><div><strong>Interface</strong><p>Responsive layout, cards and controls</p></div><span class="status-bubble soft">Available</span></div>
+            <div class="status-row"><div><strong>Demo interactions</strong><p>Editable sample values stored in this browser</p></div><span class="status-bubble soft">Available</span></div>
+            <div class="status-row"><div><strong>GameGuardian session</strong><p>No runtime access from HTML</p></div><span class="status-bubble">Not connected</span></div>
+            <div class="status-row"><div><strong>Memory / APK editing</strong><p>Intentionally excluded from this concept</p></div><span class="status-bubble">Not included</span></div>
+            <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:20px">
+              <button class="btn" id="reset-btn"><svg class="icon sm"><use href="#ic-reset"/></svg>Reset demo values</button>
+              <button class="btn primary" data-go="overview">Back to overview <svg class="icon sm"><use href="#ic-arrow"/></svg></button>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="detail-card">
+              <h3 class="card-title">Source of truth</h3>
+              <p class="explainer">Visual hierarchy derived from the original GameGuardian menu (Developer Controls v2.1.1). No original script is altered.</p>
+              <a class="subtle-link" href="https://github.com/ezduzitag-droid/dotxden-gamehub/blob/main/data/node_6f2e9a.lua" target="_blank" rel="noopener noreferrer">View source Lua <svg class="icon sm"><use href="#ic-arrow"/></svg></a>
+            </div>
+            <details><summary>Developer reference · field mapping</summary><div class="code-note">Source reference, not executed:
+Character: live health +0xB4
+Character: health limit +0xB8
+Actor: spirit +0xD0 (source scale ×10)
+Actor: injury +0x248
+Character.stat Float[1..6]:
+  Reputation, Strength, Skill,
+  Agility, Stamina, Attitude
+Progress: bank +0x38
+Progress: sentence +0x4C
+Progress: day +0x14
+Progress: hours +0x0C
+Progress: minutes +0x08
+Progress: allowance +0x48</div></details>
+          </div>
+        </div>
+        <div class="note"><svg class="icon"><use href="#ic-info"/></svg><div><strong>Design direction.</strong> Apple-inspired translucent navigation, restrained glossy layers, and Instagram-inspired violet-pink-coral gradients. This is an original interface; it does not copy Instagram or Apple assets. All CSS and JavaScript are embedded in this HTML file.</div></div>
+      </section>
+
+      <footer class="footline"><span>Hard Time III • Control Studio</span><span>Single-file UI prototype · source Lua v2.1.1</span></footer>
+    </main>
+
+    <aside class="inspector glass" aria-label="Sample player summary">
+      <div class="inspector-head"><h3>Player snapshot</h3><span class="tag neutral">PREVIEW</span></div>
+      <div class="profile-card">
+        <div class="avatar"><div class="avatar-inner"><svg class="icon"><use href="#ic-user"/></svg></div></div>
+        <h4>Sample Player</h4><p>Hard Time III · demo profile</p>
+        <div class="profile-stats">
+          <div><strong data-output="healthPct">82</strong><span>Health %</span></div>
+          <div><strong data-output="spirit">76</strong><span>Spirit</span></div>
+        </div>
+      </div>
+      <div class="inspector-block">
+        <h4>Quick readout</h4>
+        <div class="readout"><span>Health</span><strong><span data-output="health">82</span> / <span data-output="healthLimit">100</span></strong></div>
+        <div class="readout"><span>Injury</span><strong data-output="injury">4</strong></div>
+        <div class="readout"><span>Bank</span><strong data-output="bankCurrency">$1,250</strong></div>
+        <div class="readout"><span>Sentence</span><strong><span data-output="sentenceDays">30</span> days</strong></div>
+        <div class="readout"><span>Time</span><strong data-output="clock">14:35</strong></div>
+      </div>
+      <div class="inspector-callout"><strong><svg class="icon sm" style="vertical-align:-3px;margin-right:5px"><use href="#ic-spark"/></svg>Design, not debugging.</strong>Values on this page belong to the prototype. Changes help preview the interface but have no effect inside Hard Time III.</div>
+      <div class="inspector-block"><button class="btn" data-go="setup" style="width:100%">Read design notes <svg class="icon sm"><use href="#ic-arrow"/></svg></button></div>
+    </aside>
+  </div>
+
+  <dialog id="reset-dialog" aria-labelledby="reset-heading">
+    <h3 id="reset-heading">Reset demo values?</h3>
+    <p>This restores the original sample numbers. It does not affect your game or the GitHub source file.</p>
+    <div class="dialog-actions"><button class="btn" id="reset-cancel">Cancel</button><button class="btn danger" id="reset-confirm">Reset preview</button></div>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <noscript><div style="padding:20px;text-align:center">This visual prototype uses a small amount of local JavaScript for navigation and editable demo values.</div></noscript>
+
+  <script>
+    "use strict";
+    /*
+      CONTROL STUDIO — UI-ONLY PROTOTYPE
+      Source: data/node_6f2e9a.lua, GG controls v2.1.1.
+      Intent: one file, one editable source of truth in GitHub.
+      No GameGuardian, memory reads, memory writes, device, or APK APIs.
+    */
+    (function () {
+      var STORAGE = "ht3-control-studio-demo-v1";
+      var defaults = {
+        health:82, healthLimit:100, spirit:76, injury:4,
+        reputation:65, strength:71, skill:60, agility:74, stamina:77, attitude:59,
+        bank:1250, sentenceDays:30, day:7, hours:14, minutes:35, allowance:250
+      };
+      var ranges = {
+        health:[0,1000000], healthLimit:[1,1000000], spirit:[0,100], injury:[0,1000],
+        reputation:[1,99], strength:[1,99], skill:[1,99], agility:[1,99],
+        stamina:[1,99], attitude:[1,99], bank:[0,2000000000],
+        sentenceDays:[0,36525], day:[0,100000], hours:[0,23],
+        minutes:[0,59], allowance:[0,2000000000]
+      };
+      var labels = {
+        overview:"Overview",health:"Health",state:"Spirit & injury",
+        attributes:"Attributes",money:"Money",progress:"Progress",setup:"Setup & notes"
+      };
+      var state = Object.assign({},defaults);
+      var theme = "dark", toastTimer;
+      function load() {
+        try {
+          var saved = JSON.parse(localStorage.getItem(STORAGE) || "{}");
+          if (saved && typeof saved === "object") {
+            Object.keys(defaults).forEach(function (key) {
+              if (Object.prototype.hasOwnProperty.call(saved,key)) {
+                state[key] = normalize(key,saved[key]);
+              }
+            });
+            if (saved.theme === "light") theme = "light";
+          }
+        } catch (e) { /* local/offline storage is optional */ }
+        if (state.health > state.healthLimit) state.health = state.healthLimit;
+      }
+      function normalize(key,value) {
+        var n = Number(value), range = ranges[key];
+        if (!Number.isFinite(n)) return defaults[key];
+        return Math.min(range[1],Math.max(range[0],Math.round(n)));
+      }
+      function persist() {
+        try {localStorage.setItem(STORAGE,JSON.stringify(Object.assign({},state,{theme:theme})));} catch(e) {}
+      }
+      function money(n) {return "$" + Number(n).toLocaleString("en-US");}
+      function setText(key,value) {
+        document.querySelectorAll('[data-output="' + key + '"]').forEach(function (el) {
+          el.textContent = value;
+        });
+      }
+      function render() {
+        Object.keys(defaults).forEach(function (key) {setText(key,String(state[key]));});
+        setText("bankCurrency",money(state.bank));
+        setText("clock",String(state.hours).padStart(2,"0") + ":" + String(state.minutes).padStart(2,"0"));
+        var percent = Math.round(100*state.health/Math.max(1,state.healthLimit));
+        setText("healthPct",String(percent));
+        document.getElementById("health-ring").style.setProperty("--progress",percent);
+        document.querySelectorAll("[data-key]").forEach(function (input) {
+          var key = input.dataset.key;
+          if (key === "health") input.max = String(state.healthLimit);
+          if (document.activeElement !== input) input.value = String(state[key]);
+          if (input.type === "range") {
+            input.value = String(state[key]);
+            var min = Number(input.min), max = Number(input.max);
+            var p = max > min ? Math.min(100,Math.max(0,100*(state[key]-min)/(max-min))) : 0;
+            input.style.setProperty("--fill",p+"%");
+          }
+        });
+      }
+      function update(key,raw) {
+        if (!(key in defaults) || raw === "" || raw === "-" || !Number.isFinite(Number(raw))) return;
+        var value = normalize(key,raw);
+        state[key] = value;
+        if (key === "healthLimit" && state.health > value) state.health = value;
+        if (key === "health" && value > state.healthLimit) state.health = state.healthLimit;
+        render();persist();
+      }
+      function navigate(screen) {
+        if (!labels[screen]) return;
+        document.querySelectorAll("[data-screen]").forEach(function (el) {
+          el.classList.toggle("active",el.dataset.screen === screen);
+        });
+        document.querySelectorAll(".nav-link").forEach(function (el) {
+          var active = el.dataset.go === screen;
+          el.classList.toggle("active",active);
+          if (active) el.setAttribute("aria-current","page");
+          else el.removeAttribute("aria-current");
+        });
+        document.getElementById("crumb").textContent = labels[screen];
+        window.scrollTo({top:0,behavior:window.matchMedia("(prefers-reduced-motion:reduce)").matches?"auto":"smooth"});
+      }
+      function setTheme(value) {
+        theme = value;
+        document.documentElement.setAttribute("data-theme",theme);
+        document.getElementById("theme-icon").setAttribute("href",theme === "light"?"#ic-moon":"#ic-sun");
+        persist();
+      }
+      function notify(message) {
+        var el = document.getElementById("toast");
+        el.textContent = message;el.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () {el.classList.remove("show");},2500);
+      }
+      load();setTheme(theme);render();
+      document.addEventListener("click",function (event) {
+        var nav = event.target.closest("[data-go]");
+        if (nav) {navigate(nav.dataset.go);return;}
+        var preset = event.target.closest("[data-money]");
+        if (preset) {update("bank",preset.dataset.money);notify("Demo balance updated locally");}
+      });
+      document.querySelectorAll("input[data-key]").forEach(function (input) {
+        input.addEventListener("input",function () {
+          if (input.type === "range") update(input.dataset.key,input.value);
+          else if (input.value !== "" && input.validity.valid) update(input.dataset.key,input.value);
+        });
+        input.addEventListener("change",function () {
+          update(input.dataset.key,input.value);
+          render();
+        });
+        input.addEventListener("blur",render);
+      });
+      document.getElementById("theme-btn").addEventListener("click",function () {
+        setTheme(theme === "dark"?"light":"dark");
+      });
+      var dialog = document.getElementById("reset-dialog");
+      document.getElementById("reset-btn").addEventListener("click",function () {
+        if (typeof dialog.showModal === "function") dialog.showModal();
+        else if (confirm("Reset all preview values?")) reset();
+      });
+      document.getElementById("reset-cancel").addEventListener("click",function () {dialog.close();});
+      document.getElementById("reset-confirm").addEventListener("click",function () {reset();dialog.close();});
+      function reset() {
+        state = Object.assign({},defaults);render();persist();notify("Sample values restored");
+      }
+    })();
+  </script>
+</body>
+</html>
