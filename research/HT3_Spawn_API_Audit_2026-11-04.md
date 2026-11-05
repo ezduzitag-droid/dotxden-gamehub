@@ -92,3 +92,8 @@ This is a **strong second stock-manager candidate**, likely the PC furniture/ite
 
 ### Implications for next validation
 The source XAPK establishes at least **two separate object-allocation managers**, and numeric native weapon-factory arguments 83 and 88–91. No GameGuardian-only mechanism has yet been shown to call either native factory. A GG user test should be deferred until an executable in-game trigger is identified, or a developer native bridge is available; probing untyped memory addresses would not validate spawning.
+
+## Execution-gate follow-up
+Direct ARM64 inspection confirms CAIHMLHBPMF.HBALMHCPLKM (0x16D1B9C) calls CAIHMLHBPMF.LEHNPLAAMMJ (0x16D1ED8) with w0=0 and w1=requested type, allocates a managed object (0x25BB12C), and registers the result in its manager array. LEHNPLAAMMJ scans entries and handles zero/automatic selection differently from explicit indexing (0x16D1F3C–0x16D1FA8). This establishes a real allocator path but not a labeled furniture type or safe GG execution trigger.
+
+Decision: no ready GG spawn test can be justified from static addresses alone. Need verified existing in-game creation trigger or authorized native APK bridge with Unity execution context. Writing Stock arrays is not equivalent to running factory logic. Conversation artifacts HT3_Spawn_Trigger_Gate_2026-11-04.md and HT3_Spawn_Trigger_Gate_Evidence.zip preserve reproducible evidence. The GG menu and installed game were not changed.
