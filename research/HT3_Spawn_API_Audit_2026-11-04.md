@@ -97,3 +97,14 @@ The source XAPK establishes at least **two separate object-allocation managers**
 Direct ARM64 inspection confirms CAIHMLHBPMF.HBALMHCPLKM (0x16D1B9C) calls CAIHMLHBPMF.LEHNPLAAMMJ (0x16D1ED8) with w0=0 and w1=requested type, allocates a managed object (0x25BB12C), and registers the result in its manager array. LEHNPLAAMMJ scans entries and handles zero/automatic selection differently from explicit indexing (0x16D1F3C–0x16D1FA8). This establishes a real allocator path but not a labeled furniture type or safe GG execution trigger.
 
 Decision: no ready GG spawn test can be justified from static addresses alone. Need verified existing in-game creation trigger or authorized native APK bridge with Unity execution context. Writing Stock arrays is not equivalent to running factory logic. Conversation artifacts HT3_Spawn_Trigger_Gate_2026-11-04.md and HT3_Spawn_Trigger_Gate_Evidence.zip preserve reproducible evidence. The GG menu and installed game were not changed.
+
+## Second-manager type/location mapping (2026-11-04)
+Direct disassembly of `Stock.JFEMFOPPBIL` token `0x06000468`, RVA `0x165957C`, establishes argument meanings:
+- `w1` writes to `Stock.type +0x14` at RVA `0x1659620`.
+- `w2` writes to `Stock.location +0x2C` at RVA `0x16595E4`.
+- The second manager initializer `CAIHMLHBPMF.MGABOLMHDLK` at RVA `0x16D213C` includes **15** calls with `Stock.type=1 or 2` and `Stock.location=14,18,23,24,46,48,49`. These location integers are NOT item IDs. Exact callsite/argument map exported as `HT3_Second_Manager_Stock_Init_Arguments.csv`.
+- `CAIHMLHBPMF.AKKIOODJGNM`, RVA `0x16D1B94`, returns constant 1. `CAIHMLHBPMF.FLIJBGEJEID`, RVA `0x16D1AF4`, chooses values based on live manager range when a type is not specified. Neither behavior identifies a catalog of item names.
+- The manager registers `Stock` objects; precise gameplay category (furniture vs other world-stock) remains unproven without tracing the resource materialization/scene-owned reference.
+
+### Safe native invocation contract
+A secure, developer-authorized implementation should queue `SpawnRequest(category, type_id, coordinates, heading, scale, request_id)` on the Unity main thread, verify Game scene and initialized IL2CPP manager, invoke the exact build-matched native factory with its real ABI, and return a `SpawnResult` only after checking the created index and registered scene object. Use type 83 solely as the first Android-code-confirmed *weapon argument*, not as a named inventory item. Avoid broad arbitrary native calls and blind `Stock` writes. An authorized Unity-side development build is preferable to an unverified injected bridge; earlier injected builds failed startup with native crashes. A **bridge design is documented**, but no working binary, dispatch integration, or successful spawn has been claimed.
