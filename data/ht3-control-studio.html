@@ -37,6 +37,7 @@
     button {cursor:pointer}
     button:focus-visible,input:focus-visible {outline:2px solid var(--gold);outline-offset:3px}
     button:disabled {opacity:.55;cursor:not-allowed}
+    [hidden] {display:none!important}
     .svg {width:18px;height:18px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.8;flex:none}
     .svg.sm {width:15px;height:15px}
     .svg.lg {width:21px;height:21px}
@@ -85,8 +86,8 @@
       display:grid;place-items:center;background:rgba(15,11,6,.6);
       color:rgba(231,183,107,.44);
     }
-    .hud.title {font-size:10px;letter-spacing:1.5px;font-weight:850;color:rgba(242,204,136,.57)}
-    .hud.track {display:flex;gap:5px;margin-top:7px;flex-direction:column}
+    .hud .title {font-size:10px;letter-spacing:1.5px;font-weight:850;color:rgba(242,204,136,.57)}
+    .hud .track {display:flex;gap:5px;margin-top:7px;flex-direction:column}
     .hud .bar {width:112px;height:4px;border-radius:6px;background:rgba(185,145,72,.10);overflow:hidden}
     .hud .bar span {display:block;width:82%;height:100%;background:rgba(220,156,55,.38)}
     .hud .bar + .bar span {width:76%;background:rgba(144,108,58,.37)}
@@ -315,7 +316,7 @@
     @media(max-width:460px) {
       .hud.top-right {right:13px}
       .hud.top-left {left:13px}
-      .hud.title {font-size:8px}
+      .hud .title {font-size:8px}
       .hud .bar {width:75px}
       .float-icon {width:49px;height:49px}
       .menu {width:min(324px,calc(100% - 16px))}
@@ -350,9 +351,9 @@
     </div>
     <div class="hud top-left" aria-hidden="true">
       <div class="hud portrait"><svg class="svg lg"><use href="#i-user"/></svg></div>
-      <div><div class="hud title">HT III · SAMPLE PLAYER</div><div class="hud track">
-        <div class="hud bar"><span id="hud-health"></span></div>
-        <div class="hud bar"><span id="hud-spirit"></span></div>
+      <div><div class="title">HT III · SAMPLE PLAYER</div><div class="track">
+        <div class="bar"><span id="hud-health"></span></div>
+        <div class="bar"><span id="hud-spirit"></span></div>
       </div></div>
     </div>
     <div class="hud top-right" aria-hidden="true">DAY <span id="hud-day">07</span><br><strong id="hud-clock">14:35</strong></div>
