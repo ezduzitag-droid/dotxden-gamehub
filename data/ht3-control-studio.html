@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#050403">
-  <meta name="description" content="Hard Time III compact floating developer menu concept. Interactive visual-only preview based on the GameGuardian Lua menu v2.1.1.">
+  <meta name="theme-color" content="#00000000">
+  <meta name="description" content="Transparent, compact floating menu for Hard Time III. No mock gameplay, no background artwork, no memory modification. Original GameGuardian menu structure v2.1.1.">
   <title>Hard Time III · Floating Menu Concept</title>
   <style>
     :root {
@@ -26,12 +26,14 @@
       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
     }
     *,*::before,*::after {box-sizing:border-box}
-    html,body {margin:0;width:100%;min-height:100%;background:#030201;color:var(--text)}
-    body {
-      display:flex;align-items:center;justify-content:center;
-      min-height:100dvh;overflow:hidden;
-      background:radial-gradient(ellipse 60% 55% at 50% 50%,#211309 0%,#080504 53%,#020101 100%);
-      -webkit-tap-highlight-color:transparent;
+    /* TRUE ALPHA: everything outside the floating icon and menu is transparent.
+       The Android host must also configure its WebView/window as transparent. */
+    html,body {margin:0;width:100%;height:100%;min-height:100%;background:transparent!important;color:var(--text);overflow:hidden}
+    body {-webkit-tap-highlight-color:transparent}
+    .overlay-root {
+      position:fixed;inset:0;width:100%;height:100%;height:100dvh;
+      isolation:isolate;overflow:hidden;border:0;box-shadow:none;background:transparent!important;
+      pointer-events:none;
     }
     button,input {font:inherit}
     button {cursor:pointer}
@@ -41,86 +43,6 @@
     .svg {width:18px;height:18px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.8;flex:none}
     .svg.sm {width:15px;height:15px}
     .svg.lg {width:21px;height:21px}
-    .device {
-      position:relative;isolation:isolate;overflow:hidden;
-      width:min(1270px,calc(100vw - 46px),calc(96dvh * 2.12));
-      aspect-ratio:20 / 9;
-      border:1px solid rgba(237,164,52,.26);
-      border-radius:27px;
-      background:#030302;
-      box-shadow:0 0 0 6px #0d0906,0 0 0 7px rgba(238,181,86,.10),0 36px 115px rgba(0,0,0,.85);
-      touch-action:pan-y;
-    }
-    .world {
-      position:absolute;inset:0;pointer-events:none;overflow:hidden;
-      background:
-        radial-gradient(ellipse 38% 55% at 64% 60%,rgba(74,42,16,.095),transparent 92%),
-        radial-gradient(ellipse 60% 55% at 50% 104%,rgba(125,78,25,.07),transparent 82%),
-        linear-gradient(180deg,#050504,#020201 65%,#090603 100%);
-    }
-    .world::after {
-      content:"";position:absolute;inset:0;opacity:.10;
-      background:repeating-linear-gradient(180deg,transparent 0 3px,rgba(225,182,106,.18) 4px,transparent 5px);
-    }
-    .horizon {position:absolute;left:0;bottom:23%;width:100%;border-top:1px solid rgba(185,121,36,.09)}
-    .horizon::after {content:"";position:absolute;top:0;left:24%;height:130px;width:48%;background:linear-gradient(180deg,rgba(90,52,18,.06),transparent)}
-    .reticle {position:absolute;left:50%;top:51%;transform:translate(-50%,-50%);width:34px;height:34px;opacity:.17}
-    .reticle::before,.reticle::after {content:"";position:absolute;background:#edc17d}
-    .reticle::before {width:1px;height:34px;top:0;left:16px}
-    .reticle::after {height:1px;width:34px;left:0;top:16px}
-    .watermark {
-      position:absolute;top:48%;left:50%;transform:translate(-50%,-50%);text-align:center;
-      font-weight:750;font-size:clamp(12px,2vw,27px);letter-spacing:.42em;color:rgba(179,130,63,.075);
-      white-space:nowrap;
-    }
-    .watermark small {display:block;font-size:9px;letter-spacing:.30em;margin-top:10px;color:rgba(224,192,133,.22)}
-    .hud {
-      position:absolute;pointer-events:none;z-index:1;
-      color:rgba(231,198,143,.6);
-      text-shadow:0 1px 4px #000;
-    }
-    .hud.top-left {left:24px;top:17px;display:flex;align-items:center;gap:10px}
-    .hud.portrait {
-      width:36px;height:36px;border-radius:50%;
-      border:2px solid rgba(213,157,66,.35);
-      display:grid;place-items:center;background:rgba(15,11,6,.6);
-      color:rgba(231,183,107,.44);
-    }
-    .hud .title {font-size:10px;letter-spacing:1.5px;font-weight:850;color:rgba(242,204,136,.57)}
-    .hud .track {display:flex;gap:5px;margin-top:7px;flex-direction:column}
-    .hud .bar {width:112px;height:4px;border-radius:6px;background:rgba(185,145,72,.10);overflow:hidden}
-    .hud .bar span {display:block;width:82%;height:100%;background:rgba(220,156,55,.38)}
-    .hud .bar + .bar span {width:76%;background:rgba(144,108,58,.37)}
-    .hud.top-right {
-      right:22px;top:16px;text-align:right;
-      font-size:10px;letter-spacing:1.3px;font-weight:700;line-height:1.7;
-    }
-    .hud.top-right strong {font-size:13px;letter-spacing:0;color:rgba(250,222,164,.54)}
-    .hud-footer {
-      position:absolute;bottom:16px;left:50%;transform:translateX(-50%);
-      color:rgba(226,176,88,.27);font-size:9px;letter-spacing:1.6px;pointer-events:none;white-space:nowrap;
-    }
-    .joystick {
-      position:absolute;width:100px;height:100px;left:36px;bottom:31px;border-radius:50%;
-      border:2px solid rgba(236,192,108,.09);box-shadow:inset 0 0 0 20px rgba(128,87,32,.022);
-      pointer-events:none;
-    }
-    .joystick::before {content:"";position:absolute;width:43px;height:43px;border-radius:50%;inset:50% auto auto 50%;transform:translate(-50%,-50%);border:1px solid rgba(221,175,103,.14);background:rgba(166,110,35,.055)}
-    .joystick::after {content:"";position:absolute;left:50%;top:50%;width:7px;height:7px;border-radius:50%;transform:translate(-50%,-50%);background:rgba(222,167,86,.12)}
-    .action-buttons {position:absolute;right:39px;bottom:36px;display:flex;align-items:center;gap:17px;pointer-events:none}
-    .action-buttons span {
-      display:grid;place-items:center;width:56px;height:56px;border-radius:50%;font-size:9px;
-      color:rgba(218,174,104,.20);font-weight:850;letter-spacing:1px;
-      border:1px solid rgba(227,182,112,.10);background:rgba(128,84,32,.035);
-    }
-    .action-buttons span:nth-child(2) {width:67px;height:67px}
-    .landscape-label {position:absolute;right:20px;bottom:16px;color:rgba(227,176,94,.17);font-size:8px;letter-spacing:1.5px}
-    .preview-ribbon {
-      position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:1;
-      display:flex;align-items:center;gap:7px;pointer-events:none;
-      color:rgba(228,183,112,.37);font-size:9px;font-weight:800;letter-spacing:1.7px;white-space:nowrap;
-    }
-    .preview-ribbon .dot {width:6px;height:6px;border-radius:50%;background:rgba(228,166,69,.52)}
     /* Single compact overlay. It is anchored to and moved alongside the floating icon. */
     .float-icon {
       position:absolute;z-index:11;width:55px;height:55px;left:18px;top:45%;
@@ -135,17 +57,11 @@
       box-shadow:inset 0 1px 1px rgba(255,235,172,.3),0 0 0 5px rgba(201,143,45,.15),0 0 37px rgba(229,160,42,.33),0 11px 34px rgba(0,0,0,.55);
     }
     .float-icon:active {cursor:grabbing}
+    .float-icon {pointer-events:auto}
+    .menu {pointer-events:auto}
     .float-icon::before {content:"";position:absolute;inset:4px;border:1px solid rgba(246,192,97,.22);border-radius:14px;pointer-events:none}
     .float-icon::after {content:"";position:absolute;left:14px;right:14px;bottom:9px;height:2px;border-radius:2px;background:var(--gradient);opacity:.8}
     .float-symbol {font-size:19px;font-weight:900;font-style:italic;letter-spacing:-1.5px;color:#f8c867;text-shadow:0 0 15px rgba(250,193,82,.32)}
-    .float-tip {
-      position:absolute;z-index:2;left:81px;top:calc(45% + 13px);
-      font-size:10px;font-weight:720;letter-spacing:.9px;
-      padding:8px 12px;border-radius:99px;border:1px solid rgba(214,163,78,.16);
-      background:rgba(16,10,5,.73);color:rgba(240,188,102,.66);pointer-events:none;
-      white-space:nowrap;transition:opacity .25s;
-    }
-    .float-tip.hidden {opacity:0}
     .menu {
       position:absolute;z-index:10;left:84px;top:12px;
       width:340px;max-width:calc(100% - 16px);max-height:calc(100% - 16px);
@@ -291,36 +207,10 @@
       .menu-content {padding:5px 7px}
       .menu-intro {padding:4px 9px 6px}
       .menu-foot {min-height:29px;padding:6px 12px}
-      .hud.top-left {top:12px}
-      .hud.top-right {top:11px}
-      .joystick {width:74px;height:74px;bottom:17px;left:26px}
-      .action-buttons {right:29px;bottom:16px}
-      .action-buttons span {width:44px;height:44px}
-      .action-buttons span:nth-child(2) {width:52px;height:52px}
-      .hud-footer {bottom:10px}
-    }
-    @media(max-width:950px) and (orientation:landscape) {
-      .device {width:100vw;height:100dvh;aspect-ratio:auto;border:0;border-radius:0;box-shadow:none}
-      .preview-ribbon {top:9px}
-    }
-    @media(orientation:portrait) {
-      .device {width:calc(100vw - 18px);height:min(72dvh,510px);aspect-ratio:auto;border-radius:21px}
-      .rotate {
-        position:fixed;display:block;top:calc(86dvh + 2px);left:50%;transform:translateX(-50%);
-        font-size:11px;letter-spacing:.3px;color:rgba(248,206,127,.65);text-align:center;white-space:nowrap;
-      }
-      .float-tip {display:none}
-      .hud-footer,.landscape-label {display:none}
-      .preview-ribbon {display:none}
     }
     @media(max-width:460px) {
-      .hud.top-right {right:13px}
-      .hud.top-left {left:13px}
-      .hud .title {font-size:8px}
-      .hud .bar {width:75px}
       .float-icon {width:49px;height:49px}
       .menu {width:min(324px,calc(100% - 16px))}
-      .action-buttons {right:14px}
     }
     @media(prefers-reduced-motion:reduce) {
       *,*::before,*::after {animation:none!important;transition:none!important;scroll-behavior:auto!important}
@@ -344,29 +234,14 @@
     <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></symbol>
   </svg>
 
-  <main class="device" id="device" aria-label="Landscape Android game overlay preview">
-    <div class="world" aria-hidden="true">
-      <div class="horizon"></div><div class="reticle"></div>
-      <div class="watermark">HARD TIME III<small>GAMEPLAY SURFACE / BLACK MOCKUP</small></div>
-    </div>
-    <div class="hud top-left" aria-hidden="true">
-      <div class="hud portrait"><svg class="svg lg"><use href="#i-user"/></svg></div>
-      <div><div class="title">HT III · SAMPLE PLAYER</div><div class="track">
-        <div class="bar"><span id="hud-health"></span></div>
-        <div class="bar"><span id="hud-spirit"></span></div>
-      </div></div>
-    </div>
-    <div class="hud top-right" aria-hidden="true">DAY <span id="hud-day">07</span><br><strong id="hud-clock">14:35</strong></div>
-    <div class="preview-ribbon"><span class="dot"></span> VISUAL UI PROTOTYPE — NOT CONNECTED</div>
-    <div class="joystick" aria-hidden="true"></div>
-    <div class="action-buttons" aria-hidden="true"><span>MOVE</span><span>ACT</span><span>RUN</span></div>
-    <div class="hud-footer">ANDROID · LANDSCAPE  /  MENU OVERLAY TEST</div>
-
+  <!-- HTML overlay root: NO game scene, mock HUD, artwork, joystick or background.
+       In Android: transparent WebView background plus native touch pass-through are
+       required; CSS pointer-events:none cannot by itself pass Android touch events
+       to Unity beneath a full-screen WebView. -->
+  <main class="overlay-root" id="device" aria-label="Transparent Hard Time III floating menu overlay">
     <button id="float" class="float-icon" type="button" aria-controls="menu" aria-expanded="false" aria-label="Open or close Hard Time III floating menu" title="Tap to open · drag to reposition">
       <span class="float-symbol">III</span>
     </button>
-    <div class="float-tip" id="float-tip">TAP TO OPEN · DRAG TO MOVE</div>
-
     <section id="menu" class="menu" aria-label="Hard Time III developer menu" aria-hidden="true">
       <header class="menu-head">
         <button id="back" class="head-button" type="button" aria-label="Go back" hidden><svg class="svg sm"><use href="#i-back"/></svg></button>
@@ -385,7 +260,6 @@
     </section>
     <div id="toast" class="toast" aria-live="polite" role="status"></div>
   </main>
-  <div class="rotate">Rotate your device to landscape for the intended preview.</div>
 
   <script>
   "use strict";
@@ -393,13 +267,19 @@
     Hard Time III Floating Developer Menu — cosmetic concept.
     Original source: data/node_6f2e9a.lua (GG Lua v2.1.1).
     Single permanent GitHub file: data/ht3-control-studio.html.
-    No game process, overlay permission, memory modification, or APK integration.
+    Integration-ready HTML/CSS/JS presentation layer only:
+    - background is alpha-transparent, not a simulated game scene;
+    - no external assets or libraries, and no replacement graphics;
+    - Android host should load as an asset in a transparent WebView, above Unity;
+    - native hit testing / touch routing is needed for gameplay pass-through;
+    - Unity IL2CPP and Android Java layers need their own bridge for any game action;
+    - window.HT3Overlay exposes menu open/close for a native host.
+    These native components are not supplied or simulated here.
     The demo data below is local preview state only.
   */
   (function () {
     var device=document.getElementById("device");
     var floatButton=document.getElementById("float");
-    var tip=document.getElementById("float-tip");
     var panel=document.getElementById("menu");
     var content=document.getElementById("menu-content");
     var title=document.getElementById("menu-title");
@@ -413,7 +293,8 @@
     };
     var data=Object.assign({},defaultData);
     var SKEY="ht3-floating-control-studio-v1";
-    var current="main",editing=null,opened=false,tipDismissed=false,toastTimer;
+    var current="main",editing=null,draftValue=null,opened=false,toastTimer;
+    var lastScroll=0,viewKey=SKEY+"-view";
     var controls={
       health:{name:"Live health",max:1000000,min:0,step:"any",hint:"Active actor health (Float). Demo editing only.",unit:"HP"},
       spirit:{name:"Spirit",max:100,min:0,step:"any",hint:"Active actor spirit, displayed 0–100.",unit:""},
@@ -519,7 +400,7 @@
           key==="attributes"?"Character stat · Float":
           "Progress · DWORD";
         content.appendChild(row(info.name,description,group.icon,value(field),function(){
-          editing=field;navigate("edit");
+          editing=field;draftValue=null;navigate("edit");
         }));
       });
       if(key==="health"){
@@ -568,13 +449,17 @@
       var input=node("input","edit-input");
       input.id="value-input";input.type="number";input.inputMode="decimal";
       input.min=String(info.min);input.max=String(info.max);input.step=info.step;
-      input.value=String(data[editing]);input.autocomplete="off";input.setAttribute("aria-label",label.textContent);
+      input.value=draftValue===null?String(data[editing]):String(draftValue);
+      input.autocomplete="off";input.setAttribute("aria-label",label.textContent);
+      input.addEventListener("input",function(){
+        draftValue=input.value;persistView();
+      });
       wrap.appendChild(input);
       wrap.appendChild(node("p","edit-help",info.hint));
       var error=node("p","error");error.setAttribute("role","alert");wrap.appendChild(error);
       var actions=node("div","edit-buttons");
       var cancel=node("button","mini-button","Cancel");cancel.type="button";
-      cancel.addEventListener("click",function(){navigate(groupOf(editing));});
+      cancel.addEventListener("click",function(){draftValue=null;navigate(groupOf(editing));});
       var apply=node("button","mini-button primary");apply.type="submit";
       apply.appendChild(icon("check",true));apply.appendChild(node("span","","Apply preview"));
       actions.appendChild(cancel);actions.appendChild(apply);wrap.appendChild(actions);
@@ -588,10 +473,10 @@
         if(editing==="health"&&n>data.healthLimit){
           error.textContent="Health cannot exceed the sample health limit ("+data.healthLimit+").";return;
         }
-        data[editing]=n;persist();updateHud();
-        var target=groupOf(editing);
-        navigate(target);
-        toast(info.name+" preview updated. No game values changed.");
+        data[editing]=n;draftValue=null;persist();persistView();
+        // Keep the editor open after Apply, so a close/reopen returns to this exact screen.
+        render();positionPanel();
+        toast(info.name+" preview updated locally. No game values changed.");
       });
       content.appendChild(wrap);
     }
@@ -601,18 +486,38 @@
       return "main";
     }
     function navigate(v){
-      current=v;render();content.scrollTop=0;positionPanel();
+      if(v!=="edit")draftValue=null;
+      current=v;lastScroll=0;persistView();
+      render();content.scrollTop=0;positionPanel();
     }
     function backOne(){
       if(current==="main"){closeMenu();return;}
       if(current==="edit"){navigate(groupOf(editing));return;}
       navigate("main");
     }
-    function updateHud(){
-      document.getElementById("hud-day").textContent=String(data.day).padStart(2,"0");
-      document.getElementById("hud-clock").textContent=String(data.hours).padStart(2,"0")+":"+String(data.minutes).padStart(2,"0");
-      document.getElementById("hud-health").style.width=Math.max(0,Math.min(100,100*data.health/Math.max(1,data.healthLimit)))+"%";
-      document.getElementById("hud-spirit").style.width=Math.max(0,Math.min(100,data.spirit))+"%";
+    function persistView(){
+      try {
+        localStorage.setItem(viewKey,JSON.stringify({
+          current:current,editing:editing,draftValue:draftValue,scrollTop:lastScroll
+        }));
+      } catch(e) {} // Some WebView storage configurations intentionally disable persistence.
+    }
+    function restoreView(){
+      try {
+        var stored=JSON.parse(localStorage.getItem(viewKey)||"{}");
+        if(stored && typeof stored==="object"){
+          if(stored.current==="main"||stored.current==="setup"||
+             (stored.current in groups)||stored.current==="edit"){
+            current=stored.current;
+          }
+          if(typeof stored.editing==="string"&&Object.prototype.hasOwnProperty.call(controls,stored.editing)){
+            editing=stored.editing;
+          }
+          if(stored.draftValue===null||typeof stored.draftValue==="string")draftValue=stored.draftValue;
+          if(Number.isFinite(stored.scrollTop)&&stored.scrollTop>=0)lastScroll=stored.scrollTop;
+        }
+      } catch(e) {}
+      if(current==="edit"&&!editing)current="main";
     }
     function persist() {
       try{localStorage.setItem(SKEY,JSON.stringify(data));}catch(e){}
@@ -640,17 +545,13 @@
       x=Math.max(pad,Math.min(w-floatButton.offsetWidth-pad,x));
       y=Math.max(pad,Math.min(h-floatButton.offsetHeight-pad,y));
       floatButton.style.left=x+"px";floatButton.style.top=y+"px";
-      if(!tipDismissed){
-        tip.style.left=(x+floatButton.offsetWidth+10)+"px";
-        tip.style.top=(y+12)+"px";
-      }
       if(opened)positionPanel();
     }
     function positionPanel() {
       if(!opened)return;
       var w=device.clientWidth,h=device.clientHeight,icon=iconBounds();
-      panel.style.maxHeight=Math.max(100,h-16)+"px";
-      panel.style.width=Math.min(340,Math.max(180,w-16))+"px";
+      panel.style.maxHeight=Math.max(20,h-16)+"px";
+      panel.style.width=Math.min(340,Math.max(80,w-16))+"px";
       // Read the actual height after rendering. Clamp in either orientation.
       var rect=panel.getBoundingClientRect(),pw=rect.width,ph=rect.height;
       var preferredRight=icon.x+icon.w+10;
@@ -663,11 +564,15 @@
       if(opened)return;
       opened=true;panel.classList.add("open");panel.setAttribute("aria-hidden","false");
       floatButton.setAttribute("aria-expanded","true");
-      tipDismissed=true;tip.classList.add("hidden");
-      current="main";render();positionPanel();
+      // Preserve current submenu, the active editor, and any unsubmitted input.
+      render();content.scrollTop=lastScroll;positionPanel();
     }
     function closeMenu(){
       if(!opened)return;
+      lastScroll=content.scrollTop;
+      var activeInput=document.getElementById("value-input");
+      if(current==="edit"&&activeInput)draftValue=activeInput.value;
+      persistView();
       opened=false;panel.classList.remove("open");panel.setAttribute("aria-hidden","true");
       floatButton.setAttribute("aria-expanded","false");
       floatButton.focus({preventScroll:true});
@@ -712,7 +617,19 @@
     window.addEventListener("resize",function(){
       var b=iconBounds();moveIcon(b.x,b.y);positionPanel();
     });
-    restore();updateHud();render();
+    // The native Android host may call these using WebView.evaluateJavascript().
+    // They operate on the visual menu only; they do not connect to libil2cpp.
+    window.HT3Overlay=Object.freeze({
+      open:openMenu,close:closeMenu,toggle:toggleMenu,
+      dismiss:closeMenu,
+      getView:function(){return {page:current,field:editing,draft:draftValue,open:opened};},
+      getDemoValues:function(){return Object.assign({},data);}
+    });
+    content.addEventListener("scroll",function(){
+      if(opened){lastScroll=content.scrollTop;persistView();}
+    },{passive:true});
+    restore();restoreView();render();
+    window.addEventListener("pagehide",persistView);
   })();
   </script>
 </body>
