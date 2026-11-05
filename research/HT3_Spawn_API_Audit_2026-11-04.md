@@ -71,3 +71,24 @@ Native execution path in static disassembly:
 ### Revised requested gate 1 and gate 2
 Gate 1: **static factory + native call chain resolved** for positioned weapon/stock creation. Directly invoking it from GG remains unresolved. Gate 2: **Android code-confirmed argument values 83 and 88–91**, and **PC-only argument 0** for random Add; **furniture ID still unresolved**. No in-game spawn or pickup result has been claimed.
 
+
+## Continued investigation: second stock manager and World path
+
+### Separate furniture/item-style stock manager — native evidence
+The Android class `CAIHMLHBPMF` (type index 136) implements its **own** parallel allocation routine:
+- `CAIHMLHBPMF.HBALMHCPLKM(int,int)`, method index 1535, native RVA **`0x16D1B9C`**.
+- It calls `CAIHMLHBPMF.LEHNPLAAMMJ` RVA **`0x16D1ED8`** at `0x16D1C44`, uses a manager-owned count and pointer array, allocates an object (`0x25BB12C`), and registers it.
+- Direct callers are `CAIHMLHBPMF.HNABEHOCBNL` at RVA **`0x16C56A8`** and `CAIHMLHBPMF.APJMFPMAMOC` at **`0x16C5838`**.
+- In the first caller, `mov w0,wzr` and `mov w1,w19` directly precede the call; the second caller loads `w0` from manager static `+0xC` and sets `w1=0`. These prove real call argument patterns **(0, loop-index)** and **(manager-defined type, 0)**; they do not establish that zero alone is a valid object ID.
+- `CAIHMLHBPMF.MGABOLMHDLK` RVA `0x16D213C` initializes stock entries. Its body repeatedly calls `Stock.JFEMFOPPBIL` RVA `0x165957C` after allocating/registering a `Stock` object. One explicit call sets `w1=2`, `w2=14` and float placements, with fourteen additional stock initialization callsites. Those two integers are **not yet interpreted as item IDs**.
+
+This is a **strong second stock-manager candidate**, likely the PC furniture/item counterpart, but category ownership has not been conclusively proven from the disassembly. Resolving manager static field ownership, its type table, and game-scene registration remains.
+
+### Vehicle / World disambiguation
+- `World.LAPKJLMHCGE` method index 1471, native RVA **`0x16A92FC`** takes five explicit parameters and has 11 direct callers.
+- Native disassembly shows it checks a World static count at `+0x264`, resolves a selected index, calls `World.IJGNLIJACNN` RVA `0x16A966C`, and updates World static arrays at `+0x2A8` and `+0x2B0`. The adjacent method contains coordinate/position-dependent checks.
+- This is **a World index/position update path, not a confirmed vehicle-instantiation function**. Do not present its indices as vehicle IDs.
+- Vehicle model names in the asset bundle remain labels; the vehicle constructor, driving physics registration, and entity activation are unresolved.
+
+### Implications for next validation
+The source XAPK establishes at least **two separate object-allocation managers**, and numeric native weapon-factory arguments 83 and 88–91. No GameGuardian-only mechanism has yet been shown to call either native factory. A GG user test should be deferred until an executable in-game trigger is identified, or a developer native bridge is available; probing untyped memory addresses would not validate spawning.
