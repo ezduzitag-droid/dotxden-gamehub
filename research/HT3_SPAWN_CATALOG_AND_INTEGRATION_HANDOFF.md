@@ -5,6 +5,89 @@
 **Research status:** **Original uploaded XAPK directly examined**; native game factory paths and actor position copies statically verified; source asset labels catalogued; **no spawn action performed on the user's currently embedded APK** in this session.  
 **IMPORTANT:** Treat the user's successful embedded-menu/binding report as the **latest project state**. Prior CP004/menu-only handoffs are historical. The currently working menu-enabled signed APK and its Android/IL2CPP command bridge were **not supplied here**, so exact bridge names, latest binary hashes, and runtime dispatch capabilities must be inspected in the other session, not invented.
 
+## 0. Deep read-only re-audit — **important catalog clarification** (2026-11-06)
+
+**This section supersedes the earlier assumption that the 148 extracted names are only bare asset-label strings.** They are **named Unity GameObject roots with nested component/transform hierarchies**, determined from the directly decoded Unity 6.0 serialized object table in `datapack.unity3d/resources.assets`. All 148 roots have **Transform + AudioSource on the root**; **138 additionally resolve to one or more descendant MeshFilter → Mesh objects**, frequently through a child GameObject named `Model`. Thus an audio component on the root does **not** imply that the root is sound-only. The remaining 10 names had **no linked MeshFilter mesh in this graph walk**, which does not prove they lack any possible sprite/other visual rendering.
+
+**These are actual original-package object hierarchies**, but **Unity asset PathIDs are not the same as gameplay type IDs**. Serialized resources alone do not prove a working `Resources.Load` path, a scene-spawn API or drivable/pickup behavior. Real native type mappings and engine factories must still be validated.
+
+### 0.1 Directly decoded serialized-file structure
+
+- Source: `split_0.apk/assets/bin/Data/datapack.unity3d` → UnityFS member `resources.assets`, decompressed 72,771,760 bytes.
+- Unity SerializedFile **format 22**, Unity version **6000.3.25f1**, platform 13, little endian, metadata size **401,824**, data offset **401,872**, **16,665 serialized objects**, **52 object-type entries**.
+- Unity standard ClassIDs confirmed against [Unity 6000.3 class reference](https://docs.unity.com/en-us/engine/6000.3/manual/working-with-scenes/text-scene-format/class-idreference): **1 GameObject**, **4 Transform**, **23 MeshRenderer**, **33 MeshFilter**, **43 Mesh**, **82 AudioSource**.
+- The **113 item/handheld roots** are GameObject PathIDs **3754–3866**; each has components of classes **4 and 82** on the root.
+- The **35 furniture/world/vehicle roots** are GameObject PathIDs **5180–5214**; each likewise has root components **4 and 82**.
+- By parsing each GameObject's component `PPtr` references, its Transform child array, and the descendants' MeshFilter `m_Mesh` references, **138 of 148 named roots** linked to at least one class-43 Mesh, while **10** did not through this route: `Cardboard`, `Picture`, `Wooden Board`, `Cage Piece`, `Glass Pane`, `Magazine`, `Book`, `Belt`, `Folded Chair`, `Light Tube`.
+- The same resource includes **1,514 class-43 Mesh objects**. Many mesh names are generic, so child relationships are essential; a filename grep alone misses them.
+
+#### Verified example parent/child/mesh relationships
+
+| Named root GameObject (Unity PathID) | Descendant GameObject / MeshFilter | Mesh asset / PathID | What it proves |
+|---|---|---|---|
+| `Apple` (**3847**) | `Model` / MeshFilter **13425** | `Geo_Apple` / **2019** | Food-looking root has linked visible geometry |
+| `Orange` (**3757**) | `Model` / MeshFilter **13422** | `Geo_Orange` / **1993** | Root → Model → Mesh chain |
+| `Burger` (see catalog) | `Model` chain present | `Geo_CheeseBurger` / **2004** | Food mesh present, not numeric item ID |
+| `Machine Gun` (**3756**) | `Model` / MeshFilter **13669** | `MachineGun` / **2557** | Weapon-like composite geometry |
+| `Taser` (**3766**) | `Model` / MeshFilter **13381** | `Taser` / **2542** | Weapon mesh references exist |
+| `Rifle` (see catalog) | `Model` / MeshFilter **14234** | `Rifle` / **2167** | Renderer/model hierarchy exists |
+| `Car_Sedan` (**5203**) | Multiple model children | Meshes include `Door_BL`, `Door_BR`, `Door_FL`, `Door_FR`, `Steer`, `Wheel_BL`, `Wheel_BR`, `Wheel_FL` | Multi-part car hierarchy, **not yet a verified drivable spawn** |
+| `Car_Sports` (**5204**) | Multiple model children | Separate door, steering and wheel Mesh references | Model available; native vehicle registration still unresolved |
+| `Car_Van` (**5180**) | Multiple model children | `Body`, doors, steering and wheels | Nested model structure |
+| `Motorcycle` (**5213**) | Multiple model children | `Body`, `Handles`, `RearWheel`, `FrontWheel` | Visual parts available |
+| `Bed` (**5188**) | Multiple model children | `Cover`, `Feet`, `Head`, `Mattress`, `Pillow` | Furniture hierarchy available |
+| `Desk` (**5183**) | Multiple model children | `Drawer`, `Drawers01`, `Drawers02`, `Top01`, `Top02` | Multi-part furniture hierarchy |
+
+**Careful terminology:** These are source **Unity PathIDs**, not `Stock.type`, not factory type values, and not APK resource IDs. Do **not** create a menu entry like "Spawn Apple (3847)" and assume the game factory accepts `3847`. Instead map each **native factory type ID → runtime spawned object → Unity hierarchy/mesh name**.
+
+### 0.2 New native placement proof: the weapon factory intentionally offsets coordinates
+
+Re-examined ARM64 at `IFCBDBGCKJA.CGLILJCFENK` RVA `0x1530160`:
+
+- Six explicit args observed as `w0=type`, **`s0=x, s1=y, s2=z, s3=angle, s4=scale`**; it invokes allocator RVA `0x1526114` and returns an **integer object index**.
+- It initially assigns input `x,y,z` to created object `+0x50,+0x54,+0x58`. The returned stock index must be **at least 1** before this positioning path executes.
+- It calls a float random-range-like helper RVA **`0x2D54654`** with bounds **0.5 and 1.0**, then multiplies the result by the passed `scale` and stores it in a placement-distance field `+0xA0`. Another random amount is stored at `+0xA4` for other placement-related behavior.
+- At `0x15302C4`, helper RVA **`0x167B110`** computes `cos((angle-90)×0.01745329238)×distance` and adds the result to object X. At `0x15302E0`, helper RVA **`0x167C6B4`** computes `sin((angle+90)×0.01745329238)×distance` and adds the result to object Z.
+- Therefore the output placement after the factory runs is equivalent to:
+
+```text
+r ≈ Range(0.5, 1.0) * scale  // range helper semantics to be verified in runtime
+outX = requestedX + sin(angleDegrees * π / 180) * r
+outY = requestedY
+outZ = requestedZ + cos(angleDegrees * π / 180) * r
+```
+
+**Engineering consequence:** The proposed "spawn 1.75 units in front" code from the earlier document **must not blindly add a 1.75-unit forward offset before calling this factory** without accounting for the factory's *additional* forward distance. For the *first controlled test*, consider passing validated player X/Y/Z and heading directly at scale 1.0; inspect where the result actually appears. If exact placement is required, use a validated **game-owned positioning/transform update operation** after the factory has registered the object; a raw stock-pointer write is not a substitute. Native factory behavior is evidenced; **live actor heading must still be calibrated separately**.
+
+### 0.3 New validation details: do not sweep arbitrary IDs
+
+The weapon-side validator at RVA `0x152604C` uses ARM64 conditional comparisons rather than a trivial `0..max` check:
+
+- It performs a specific exclusion for **type 72** and a paired/small-range exclusion involving **108–122** (ARM64 `cmp`, `and`, `ccmp`, `ccmn`, `cset lo`; these exclusions are inferred from branch-condition evaluation).
+- It conditionally excludes **type 28** when the manager static field at **`+0x08` equals 10**.
+- It additionally checks a dynamic stock-type upper limit through manager static state at **`+0x0C`**, rejecting zero or values above the initialized limit when called as a strict type validator.
+- **An additional allocator-level path treats request type 0 specially** (the caller bypasses the ordinary reject-on-validator-failure check); **do not treat 0 as a named item ID**.
+- All this is original-build **static disassembly**, not a live comprehensive whitelist. **Type 83 is not in the statically excluded set**, which agrees with its observed original Android factory callsites. Record real runtime validity per ID, not merely a guessed range.
+
+### 0.4 Second manager and Unity bundle follow-up
+
+- `CAIHMLHBPMF.DOFOCOJJKKF`, token `0x06000608`, RVA **`0x16D2890`**, has **eight explicit parameters** and iterates existing second-manager entries. It calls methods on `GDICAFINBED` objects (e.g. `0x16EFFEC`, `0x16F585C`) after coordinate/state checks; **it does not directly invoke the second manager's creation method `0x16D1B9C` and should NOT be labeled a positioned furniture constructor**. This is a candidate for collision/interaction/selection research, not a validated spawn method.
+- The original `assets/world` UnityFS CAB inspected separately contains **718 serialized objects**, including **137 GameObjects** named mainly UI terms such as `Virtual Stick`, `Joystick`, `Health Meter`, `Spirit Meter`, `DPad_Right`, `Button03`. A bundle's name `world` alone does **not** prove vehicle meshes/factories live in it.
+- The actual car/weapon/food composite hierarchies above were found in **`datapack.unity3d/resources.assets`**. Separately, `world` may still be used for other resources, but do not conflate the two files.
+
+### 0.5 Updated evidence-based next research tasks
+
+1. On the user's **existing working embedded menu APK**, record actual `libil2cpp.so` hash and existing native bridge/dispatcher path. **Do not revert to an older checkpoint.**
+2. Read player live actor X/Y/Z/angle and confirm walking/turning. Use the original ARM64-traced heading basis from section 0.2 as a testable reference.
+3. Use the existing Android observed factory arg **83**, pass player coordinates and angle to the factory once with safe checks, account for its built-in forward displacement, then verify returned index, actual rendered hierarchy and interaction.
+4. Match that spawned entity's `Stock.type` and Unity GameObject/mesh references to the **148 composite root names** and the **1,514 mesh-name index**, before naming any type ID.
+5. For the second manager, trace the **factory-to-visual hierarchy connection** and a native positioned wrapper instead of interpreting `DOFOCOJJKKF` as a spawn API.
+6. Keep vehicles on a **separate verified factory/physics gate**; the existence of wheel and door meshes is not proof of a complete registered drivable entity.
+
+**Static verification performed:** SerializedFile v22 header and 16,665-object table parsed; 148 root-to-Transform-to-AudioSource references checked; recursively followed child Transforms and MeshFilter-to-Mesh pointers; verified 138 linked mesh hierarchies; decoded ARM64 float arguments, degree constants and trig helper callsites; compared Unity ClassIDs with official Unity documentation. No game process was run and no objects were spawned in this research session.
+
+---
+
 ## 1. Primary resources and version-sensitive boundaries
 
 | Source | Role |
