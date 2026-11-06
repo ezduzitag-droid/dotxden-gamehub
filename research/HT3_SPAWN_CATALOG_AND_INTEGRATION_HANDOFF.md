@@ -102,13 +102,13 @@ The actual game-assembly method map contains **2,004 methods** (IL2CPP metadata 
 | `LOCECKLDEDA.HBALMHCPLKM` | `0x0600050E` (1293) | **`0x167F29C`** | Two explicit integers. Calls selector `LEHNPLAAMMJ`, expands actor array/counter, constructs an `EFPJKAPKGOB` object and invokes its initializer. Returns the active actor index. |
 | `LOCECKLDEDA.LEHNPLAAMMJ` | `0x0600050B` (1290) | `0x16835A4` | Three-argument actor-slot/selector routine. Handles existing/free slots and constructs actor instances in a fallback path. |
 | `LOCECKLDEDA.AAJNJENIJBA` | `0x06000505` (1284) | **`0x167F5E4`** | One requested Character ID; scans manager slots, checks activity marker and actor Character ID, returns matching **actor index or zero**. **Read-only per-NPC lookup primitive**. |
-| `EFPJKAPKGOB.GKPAOEAELIH` | game method index 942? **Verify against method map** | **`0x162962C`** | Three explicit arguments; actual actor initializer; establishes link to the stored Character record, health/state initialization, transforms, equipment/animation context and game-world setup. |
+| `EFPJKAPKGOB.GKPAOEAELIH` | **`0x0600039A`** (921) | **`0x162962C`** | Three explicit arguments; actual actor initializer; establishes link to the stored Character record, health/state initialization, transforms, equipment/animation context and game-world setup. |
 | `EFPJKAPKGOB.JLJDCKEMCCD` | `0x0600039D` (924) | **`0x15A32C0`** | **Three float arguments**. Assigns actor position, calls world-surface checks/height correction and handles placement fallback. It is more than raw x/y/z writes. |
 | `LOCECKLDEDA.HNABEHOCBNL` | `0x06000501` (1280) | `0x167D6B4` | Scene/room population initializer; contains **three** direct calls to the actor allocator among roster/cast selection and other initialization logic. |
 | `Scene_Game.Start` | `0x0600055F` | `0x16C479C` | Actually calls manager initialization, `LOCECKLDEDA.HNABEHOCBNL` and other game-stock managers during Game scene startup. |
 | `Scene_Game.Update` | `0x06000560` | `0x16C5FAC` | Calls active-actor manager update methods, world update and separate weapon/furniture/animal-like manager updates. |
 
-**Critical correction:** In the row for `EFPJKAPKGOB.GKPAOEAELIH`, the exact **metadata method index/token is available in the included 2,004-method map** and should be read from that table; do not copy a guessed index from this summary. The original RVA `0x162962C` and the direct native call from `0x167F5C8` are what matter for this analysis.
+**Method identity cross-check:** `EFPJKAPKGOB.GKPAOEAELIH` is game-assembly method index **921**, token **`0x0600039A`**, original RVA **`0x162962C`**. The NPC allocator invokes it directly at `0x167F5C8`.
 
 #### Direct native call chain and runtime consequences
 
@@ -191,8 +191,8 @@ The original `datapack.unity3d/resources.assets` SerializedFile table (16,665 ob
 | Source GameObject | Unity PathID | Descendant Transform count | Verified component structure | Spawn-system implication |
 |---|---:|---:|---|---|
 | **`Human_Prefab`** | **4887** | **43** | Transform, MeshFilter, MeshRenderer, 17 SkinnedMeshRenderers, MonoBehaviour, Animator, AudioSource | General rigged human model; **not** a person-specific NPC ID. NPC appearance likely depends on `Character` data/costumes and actor setup. |
-| **`Wolf`** | **5836** | **55** | Animated bone tree, SkinnedMeshRenderer, Animator, AudioSource and force/shadow component | Animal-looking model exists; must map native animal type and movement/AI path. |
-| **`Horse`** | **3123** | **55** | Multiple SkinnedMeshRenderers, Animator, AudioSource and force/shadow component | Animal-looking model exists; no numeric type mapping yet. |
+| **`Wolf`** | **5836** | **55** | Animated bone tree, SkinnedMeshRenderer, Animator, AudioSource and SpriteRenderer (ClassID 212, likely shadow) | Animal-looking model exists; must map native animal type and movement/AI path. |
+| **`Horse`** | **3123** | **55** | Multiple SkinnedMeshRenderers, Animator, AudioSource and SpriteRenderer (ClassID 212, likely shadow) | Animal-looking model exists; no numeric type mapping yet. |
 | **`Crowd`** | **3194** | **28** | Animator with 27 descendant MeshFilter/MeshRenderer crowd parts | **Background crowd geometry, not 27 active NPC actor objects.** |
 | **`Car_Sedan`** | **5203** | **13** | Body/doors/steering/wheels; MeshRenderers, Animator and effect components | Vehicle visual hierarchy exists; still **not a validated drivable vehicle factory**. |
 
