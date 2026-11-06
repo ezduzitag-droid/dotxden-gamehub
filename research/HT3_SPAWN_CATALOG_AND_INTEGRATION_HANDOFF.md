@@ -88,6 +88,176 @@ The weapon-side validator at RVA `0x152604C` uses ARM64 conditional comparisons 
 
 ---
 
+## 0C. Additional read-only game-system audit — NPCs, animals, rooms, and new menu capabilities (2026-11-06)
+
+**This section records NEW research outside the item/weapon/furniture investigation and supersedes the older statement that an NPC creation call was unlocated.** The original 1.1.8 XAPK was re-verified with SHA-256 `07b0393458a8e11f570c421342113937ed35ea362304adee08b754669d7ddc03`. Research remained **entirely read-only**; the current user-confirmed working embedded APK/menu was not supplied, rebuilt, installed, or modified. The latest modified build's hashes and bridge API must come from the other ChatGPT session.
+
+### 0C.1 The NPC actor factory and the most promising positioned-NPC wrapper
+
+The actual game-assembly method map contains **2,004 methods** (IL2CPP metadata v39). New tracing identified a complete path from **requested Character ID → active-actor manager allocation → initialized EFPJKAPKGOB actor → environmental placement**:
+
+| Owner.method | Metadata token | Original ARM64 RVA | What static code demonstrates |
+|---|---|---|---|
+| `LOCECKLDEDA.PGFGFJPFCIP` | `0x06000512` (method index 1297) | **`0x16842F8`** | **Four explicit arguments**: one integer in `w0`, three floats in `s0/s1/s2`. Selects an eligible Character (if no ID), checks for existing active actor, calls actor allocator, then positions returned actor with those three floats. **Strong candidate for Spawn NPC by ID at location**. |
+| `LOCECKLDEDA.HBALMHCPLKM` | `0x0600050E` (1293) | **`0x167F29C`** | Two explicit integers. Calls selector `LEHNPLAAMMJ`, expands actor array/counter, constructs an `EFPJKAPKGOB` object and invokes its initializer. Returns the active actor index. |
+| `LOCECKLDEDA.LEHNPLAAMMJ` | `0x0600050B` (1290) | `0x16835A4` | Three-argument actor-slot/selector routine. Handles existing/free slots and constructs actor instances in a fallback path. |
+| `LOCECKLDEDA.AAJNJENIJBA` | `0x06000505` (1284) | **`0x167F5E4`** | One requested Character ID; scans manager slots, checks activity marker and actor Character ID, returns matching **actor index or zero**. **Read-only per-NPC lookup primitive**. |
+| `EFPJKAPKGOB.GKPAOEAELIH` | game method index 942? **Verify against method map** | **`0x162962C`** | Three explicit arguments; actual actor initializer; establishes link to the stored Character record, health/state initialization, transforms, equipment/animation context and game-world setup. |
+| `EFPJKAPKGOB.JLJDCKEMCCD` | `0x0600039D` (924) | **`0x15A32C0`** | **Three float arguments**. Assigns actor position, calls world-surface checks/height correction and handles placement fallback. It is more than raw x/y/z writes. |
+| `LOCECKLDEDA.HNABEHOCBNL` | `0x06000501` (1280) | `0x167D6B4` | Scene/room population initializer; contains **three** direct calls to the actor allocator among roster/cast selection and other initialization logic. |
+| `Scene_Game.Start` | `0x0600055F` | `0x16C479C` | Actually calls manager initialization, `LOCECKLDEDA.HNABEHOCBNL` and other game-stock managers during Game scene startup. |
+| `Scene_Game.Update` | `0x06000560` | `0x16C5FAC` | Calls active-actor manager update methods, world update and separate weapon/furniture/animal-like manager updates. |
+
+**Critical correction:** In the row for `EFPJKAPKGOB.GKPAOEAELIH`, the exact **metadata method index/token is available in the included 2,004-method map** and should be read from that table; do not copy a guessed index from this summary. The original RVA `0x162962C` and the direct native call from `0x167F5C8` are what matter for this analysis.
+
+#### Direct native call chain and runtime consequences
+
+- In `LOCECKLDEDA.PGFGFJPFCIP`, the first integer argument is treated as a **Character identifier / selection input**. When it is **zero**, the function selects a random candidate from `Characters.no_chars`, checks character/scene conditions, avoids active duplicates, and retries within a bounded loop. This is **random-eligible NPC selection**, not "NPC ID 0".
+- When it chooses a candidate, `0x168450C` invokes `LOCECKLDEDA.HBALMHCPLKM` with the selected ID and secondary argument zero.
+- If allocation returns a valid slot, `0x1684564` invokes `EFPJKAPKGOB.JLJDCKEMCCD` on the returned actor with the originally supplied `s0/s1/s2` position.
+- `PGFGFJPFCIP` is called from **four** direct game-assembly callsites: `Character.HNCHDIIGBHO` at `0x1451BA8`, `EFPJKAPKGOB.PCOCOOEIOCP` at `0x153A044`, and `LPBGBCKENEM.GFFNGIBJOKL` at `0x1769E64` and `0x176A1A4`. These are **existing gameplay paths**, not fabricated entrypoints.
+- Placement method `JLJDCKEMCCD` stores coordinate arguments in **active actor +0x48 / +0x4C / +0x50**, but may adjust vertical placement using World methods, test geometry, and choose an alternate valid position. **Passing (0,0,0) can enter random/fallback placement logic**. Do not interpret zero triple as a guaranteed world origin or insist that the final Y equals requested Y.
+- The call chain initializes actor state through game functions; direct modification of array length or raw actor pointers does **not** perform these steps.
+
+**Expected bridge plan:** On Unity's correct main execution context, request `SpawnNpc(characterId, requestedX, requestedY, requestedZ)`, validate the Game scene and initialized manager, invoke this **original-build-verified wrapper with its actual generated ABI and hidden runtime metadata arguments**, then resolve returned actor index and verify a newly visible NPC. This is a plan, **not** a working bridge delivered by this research.
+
+**Per-character duplication caution:** `PGFGFJPFCIP` consults existing actor lookup, so requesting the same roster character repeatedly is **not** a safe way to create clones. A room-population slider must choose **distinct eligible IDs** and respect the game's occupancy/roster capacity. Character cloning requires separately verified lifecycle logic.
+
+### 0C.2 Verified current-room NPC lookup and count logic
+
+The original `LOCECKLDEDA` class is the active-actor manager (metadata type-definition index **87**). Its static field-offset table reveals:
+
+| Manager field | Static offset in initialized class | Meaning established by native usage |
+|---|---:|---|
+| `GDKONMBMION` | **`+0x00`** | **Highest registered active-actor slot/count**, read and incremented by allocator. Not proof that all slots are currently active, visible, or NPCs. |
+| `BLNLGHHFPOE` | **`+0x20`** | IL2CPP array reference of actor objects, indexed from **1** in the traced lookup. Validate allocated length at array `+0x18`; element pointers at array `+0x20 + index*8`. |
+| Other static fields | `+0x04`, `+0x08`, `+0x0C`, `+0x10`, `+0x14`, `+0x18`, `+0x28`, `+0x30` | Other manager flags/counts/arrays. **Do not label or edit without functional cross-references.** |
+
+**Disassembly of `AAJNJENIJBA` at `0x167F5E4`:** loops actor slots 1..manager count; rejects missing entries and records with **float `actor+0x38 < 0`**, then compares **int `actor+0x18`** against requested Character ID. Returns the matching slot index (or 0). The field at `+0x38` behaves as an **activity marker** in this path; it must **not** be presumed NPC health.
+
+**Recommended display calculation:** `Room NPCs = valid active actor slots meeting all filters` — unique `actor+0x20` linked Character record, non-player Character, live activity marker, optional validated current World location, correct Game scene. Do **not** display raw manager slot count as "NPCs in room." The global Character-roster count `Characters.no_chars` is not a room count either. Do not set either integer to spawn/despawn actors.
+
+**Suggested individual-NPC identity fields** from named IL2CPP `Character` class (type index 7), validated field-offset map:
+
+| Field | Character-relative offset | Intended read-only menu usage |
+|---|---:|---|
+| `id` | **`+0x10`** | Stable roster identifier, subject to scene/save validation |
+| `name` | **`+0x18`** | Managed IL2CPP string for UI row |
+| `role` | **`+0x24`** | Prisoner/officer/civilian label after role-value mapping |
+| `team` | **`+0x2C`** | Faction/group field; do not guess semantics |
+| `prop` | `+0x38` | Stored accessory/prop field; meaning needs runtime confirmation |
+| `stat` | **`+0x70`** | Validated six-stat array mapping |
+| `health`, `healthLimit` | **`+0x80`, `+0x84`** | Stored/saved health reference; not necessarily effective live state |
+| `spirit`, `injury` | `+0x88`, `+0x8C` | Stored state; spirit is scaled in actor initialization |
+| `relation` | **`+0xA0`** | Relationship array reference; **index/value semantics unverified** |
+| `location` | **`+0xEC`** | Stored room/location index, useful with `World.location` after validation |
+| `x, y, z, angle` | **`+0xF0, +0xF4, +0xF8, +0xFC`** | Stored position; live actor preferred during gameplay |
+| `dead`, `absent` | `+0x94`, `+0x98` | Eligibility/status checks; do not toggle blindly |
+
+**Per-NPC live actor** `EFPJKAPKGOB` (type index 49):
+- `actor+0x20` → linked `Character` object.
+- `actor+0x18` → Character ID used by active lookup.
+- `actor+0x38` → activity/available-slot marker (lookup treats negative as inactive).
+- `actor+0x48/+0x4C/+0x50` → live X/Y/Z, `actor+0x78` → angle (from prior original-build investigation).
+- `actor+0xB4` → **live health float**, `actor+0xB8` → live health limit float, `actor+0xD0` → **live spirit float**, `actor+0x248` → **live injury Int32**.
+- Validate both `actor+0x18 == selected Character.id` and `actor+0x20 == expected Character pointer` before editing any NPC. Unique actor identity is essential during room changes or mass announcements/animations.
+
+**NPC health editing:** The existing embedded menu reportedly already edits player's live health. Reuse its verified mechanism but **parameterize the actor target** instead of changing `Characters.cStar`. An individual NPC's live actor health may be updated with the same typed rules **only after the selected NPC is uniquely resolved**. Saved `Character.health` and active `actor.health` can diverge; freezing needs resilient reacquisition and should stop/retry safely if the actor disappears or ambiguity arises. The live edit must not silently retarget an NPC with a recycled array slot.
+
+### 0C.3 A third entity creation manager: animal candidate, distinct from weapons, furniture and NPCs
+
+The Game scene initialization and update call **three distinct stock/entity managers plus the actor manager**:
+
+| Manager | Representative native method | Concrete evidence | Category evidence |
+|---|---|---|---|
+| `IFCBDBGCKJA` | `CGLILJCFENK` **`0x1530160`** | Positioned weapon-stock factory, native argument 83 / random 88..91 | Weapon/handheld stock: **high-confidence** |
+| `CAIHMLHBPMF` | `HBALMHCPLKM` **`0x16D1B9C`** | Distinct Stock records and own array/allocator | Furniture/item/world-stock: **probable, not fully mapped** |
+| **`LNHJHMBGCIC`** | **`HBALMHCPLKM` `0x18531E4`** | Distinct manager with own count/array, type validator, allocation, constructor and per-frame updates | **Likely animal manager**, not runtime-confirmed |
+| `LOCECKLDEDA` | `HBALMHCPLKM` **`0x167F29C`** | Allocates **`EFPJKAPKGOB`** actors | NPC/active-character manager: **confirmed static chain** |
+
+**New proof for third manager:**
+- `Scene_Game.Start` invokes `LNHJHMBGCIC.JNJJAAMPECO` and `LNHJHMBGCIC.HNABEHOCBNL`; `Scene_Game.Update` invokes `LNHJHMBGCIC.OMCPFEIKAEE`.
+- `LNHJHMBGCIC.HBALMHCPLKM(int,int)` at **`0x18531E4`** validates requested type, grows the manager array/count and creates **`IEJILMLDJKF`** managed objects, calling constructor at **`0x16EE5E8`** and initializer `IEJILMLDJKF.GKPAOEAELIH` at **`0x16EB4DC`** with actor index and requested arguments.
+- `LNHJHMBGCIC.MGABOLMHDLK` at **`0x1853968`** constructs Stock records and interacts with the other stock managers, indicating a saved-entity system.
+- `SaveData` has three separately named saved collections: **`stockAnimals+0x1A0`**, **`stockFurniture+0x1A8`**, and **`stockWeapons+0x1B0`** (instance-relative offsets), supporting the three-manager interpretation.
+- The resource bundle contains real animated **`Wolf`** and **`Horse`** object hierarchies, but these **do not by themselves prove numeric animal type IDs or which manager uses each model**.
+
+**Menu implication:** Add an **Animals (research)** category as a future candidate, with available Wolf/Horse model evidence displayed as **assets, not verified spawn IDs**. Do not call `LNHJHMBGCIC.HBALMHCPLKM` with guessed animal types or combine these IDs with weapon/furniture namespaces. The first step is confirming `IEJILMLDJKF` runtime objects against the actual Wolf/Horse model and a safe placed-animal wrapper.
+
+### 0C.4 Untouched Unity model families: Humans, Wolves, Horses, Crowds, vehicles
+
+The original `datapack.unity3d/resources.assets` SerializedFile table (16,665 objects) was decoded and the named GameObject hierarchy traversed through Transforms and component references. The **Unity PathIDs below are NOT game character IDs or spawn type IDs.**
+
+| Source GameObject | Unity PathID | Descendant Transform count | Verified component structure | Spawn-system implication |
+|---|---:|---:|---|---|
+| **`Human_Prefab`** | **4887** | **43** | Transform, MeshFilter, MeshRenderer, 17 SkinnedMeshRenderers, MonoBehaviour, Animator, AudioSource | General rigged human model; **not** a person-specific NPC ID. NPC appearance likely depends on `Character` data/costumes and actor setup. |
+| **`Wolf`** | **5836** | **55** | Animated bone tree, SkinnedMeshRenderer, Animator, AudioSource and force/shadow component | Animal-looking model exists; must map native animal type and movement/AI path. |
+| **`Horse`** | **3123** | **55** | Multiple SkinnedMeshRenderers, Animator, AudioSource and force/shadow component | Animal-looking model exists; no numeric type mapping yet. |
+| **`Crowd`** | **3194** | **28** | Animator with 27 descendant MeshFilter/MeshRenderer crowd parts | **Background crowd geometry, not 27 active NPC actor objects.** |
+| **`Car_Sedan`** | **5203** | **13** | Body/doors/steering/wheels; MeshRenderers, Animator and effect components | Vehicle visual hierarchy exists; still **not a validated drivable vehicle factory**. |
+
+**Important distinction for NPC counts:** A single `Human_Prefab` is reusable character geometry. A `Crowd` with 27 visual subobjects is a static/background display. **Only validated active `EFPJKAPKGOB` objects registered through the actor manager** should count as gameplay NPCs.
+
+### 0C.5 Other discoverable menu categories from previously unexamined named metadata
+
+These fields are present in the original source. **They are candidates for read-only inspection; direct changes may not refresh game systems or may be overwritten.** Implement controls only after finding the game's own update/setter path.
+
+| Menu category / proposed feature | Static evidence | Recommended gate |
+|---|---|---|
+| **NPCs in room: count and choose individual** | Actor manager array +0x20, count/high-water +0x00, per-actor ID+0x18 and linked Character+0x20 | **First priority**, read-only roster + active/dead filtering. |
+| **Spawn NPC / spawn random eligible NPC / teleport NPC** | `PGFGFJPFCIP` `0x16842F8`; actor position method `JLJDCKEMCCD` `0x15A32C0` | Native calling convention, main-thread dispatch, valid scene/character/coordinates; observe real actor. |
+| **NPC live health, spirit, injury, attributes** | Active `EFPJKAPKGOB` mirrors and `Character.stat+0x70` | Port existing proven player editor to validated selected target; don't write stored-only health. |
+| **NPC roles, teams, relationships** | `Character.role+0x24`, `team+0x2C`, `relation+0xA0` | List read-only first; resolve role/team enum and relationship indexing before edits. |
+| **NPC equipment / physical status** | `Character.prop+0x38`, `cuffed+0x140`, `chained+0x144`, `seat+0x104` | Verify native gameplay methods; these saved fields may not effect live actors. |
+| **Animal list and spawning** | Third manager `LNHJHMBGCIC`, `IEJILMLDJKF` objects, `SaveData.stockAnimals`, Wolf/Horse models | **Research-only** until type-ID/map and positioned wrapper confirmed. |
+| **Item/weapon/furniture inspector** | `Stock.id+0x10`, `type+0x14`, `variant+0x18`, `location+0x2C`, `holder+0x54`, `wear+0x58`, `owner+0x5C`, `health+0x68`, `content+0x6C`, `fireTim+0x70` | Per-object read-only listing; optional durability/owner editor only via validated game logic. |
+| **Room/world environment** | `World.location+0x10`, `weather+0x78`, `waterLevel+0x80`, `floodLevel+0x88`, `floodTarget+0x8C`, `lightSetting+0xF8`, `fog+0x194` | Read status first; changes may require world reinitialization, physics/weather methods, or scene load. |
+| **Crowd / arena visuals** | `World.crowdSize+0x1B0`, `ringShape+0x1C8`, `arenaCage+0x2E0` | Distinguish background crowd from live NPCs; treat structural edits as risky. |
+| **Time and schedules** | `Progress.clockSpeed+0x00`, `wakeTime+0x60`, `lunchTime+0x64`, `lockTime+0x68`; existing clock fields | Read-only inspector first; current working time controls may already expose these. |
+| **Game population/options** | `SaveData.optPopulation+0xE0`, `optAnimals+0xE4`, `optHealthDrain+0xF8`, `optGore+0x104`, `optFrameRate+0x13C` | **SaveData instance settings**, not instant "spawn N" controls. Discover live option controller and application timing. |
+| **Missions / active tasks** | `Progress.mission+0x100`, `missionClient+0x104`, `missionTarget+0x108`, `missionVariable+0x10C`, `missionDeadline+0x110` | Show read-only mission details, avoid editing flags without world-state invariants. |
+| **Pre-match cast selector** | `Scene_Match_Setup.AddRandom` `0x168CB9C`, `RemoveCast` `0x168DA34` | **Only match/setup scene.** These methods are NOT equivalent to spawning an NPC in live Game scene. |
+
+### 0C.6 Correct "NPC count = X" UI behavior
+
+**Do not** set `LOCECKLDEDA.static+0x00` or `Characters.no_chars` to a target number. Both are internal bookkeeping; increasing them may make the game read uninitialized/null actor pointers and crash. The user can have an **editable target count** that the bridge meets *through valid creation/destruction APIs*:
+
+```text
+CURRENT ROOM  (display live verified actor rows)
+  NPCs: 5 active | actor slots/high-water: 9 | roster: 320 [illustrative ONLY]
+  Select NPC
+    #id / name / role / health / spirit / x-y-z / freeze status
+    Health & Spirit  [enabled only for unique live actor]
+    Stats, role, relation, inventory [initially read-only]
+    Teleport next to me [only after verified reposition API]
+  Spawn NPC
+    Choose roster character ID or random eligible
+    Spawn one, in front of current player
+    Spawn until target count (future, small bounded queue)
+  NPC errors/logs (validation/scene/actor ambiguity)
+```
+
+Numbers in this diagram are **illustrative**. At runtime enumerate live manager entries with class/array bounds checks, exclude player, inactive/dead/unusable slots, and compare the linked Character's location with `World.location` only when room semantics are validated. After each confirmed spawn, **re-enumerate**; do not increment the UI count optimistically. Decreasing count requires a **verified game despawn/retire method**, not a negative pointer or raw array edit. If no safe despawn method is established, offer spawn-one with maximum limits and mark count reduction unavailable.
+
+### 0C.7 Safe test sequence for the receiving embedded-APK session
+
+1. **Protect present success:** Back up the **latest working embedded-menu APK**, signed 3-split build and saves. Inspect the *current* Android→Unity/IL2CPP bridge and hashes; **do not revert to CP004**.
+2. **Read-only enumerate:** Read `LOCECKLDEDA` static actor array and count; validate IL2CPP array length, each actor pointer/type, `actor+0x38` active marker, `actor+0x18` Character ID, `actor+0x20` linked Character and names/role/health. Record UI row mapping, active count, roster count, World location.
+3. **Identity gate:** Test with one NPC moving, fighting, room change and an animation/announcement. Selection by **Character ID plus object validation**, not stale array slot. Reset stale actor pointers and preserve selected-ID UI state.
+4. **One existing NPC editor:** Reuse current working live health read/write/freeze only for a uniquely selected NPC. Compare on-screen effect and stored-vs-live state, no crash, no accidental writes to player.
+5. **NPC positioning gate:** Validate that `JLJDCKEMCCD` accepts three finite world floats and routes collision/ground height safely. All-zero input is a special fallback; never use blindly.
+6. **First real NPC spawn:** Call `PGFGFJPFCIP` once in the Game scene with an eligible specific Character ID, player-relative safe coordinates, correct native ABI/thread, and verify actor count/ID/visual/health/interaction. Check duplicate-ID and scene-change behavior.
+7. **Count target after proof:** Queue one create at a time with strict caps and rollback; don't treat manager high-water count as live NPC count. Deletion needs its own validated lifecycle.
+8. **Animal/item follow-up:** Investigate separate manager type namespaces, category-specific factories, and model matching; only then enable animal/furniture/weapon/menu choices.
+9. **Optional safe add-ons:** Implement read-only World/Progress/Stock/mission inspectors first. Do not combine high-risk world editing with the first NPC spawn test.
+10. **Record evidence:** Original and modified module hashes, method/bridge signatures, current Game scene, character ID, requested/actual location, returned actor index, recognized name/model, logs, and observed gameplay behavior.
+
+**What remains unverified:** The precise live APK bridge signature, NPC spawn UI integration, actual NPC spawn outcome, game-room filtering semantics, NPC despawn implementation, numeric animal IDs, any vehicle spawn API, item category ID mappings, and real-time effects of World/SaveData option edits. The static native findings are substantial but do not justify claiming successful runtime features.
+
+**Reproducibility artifact:** The separate file **HT3_NPC_And_Game_Systems_ReadOnly_Evidence_2026-11-06.zip** contains the original-build 2,004 game-method map, 873 selected field records, 22 target native method entries, call graphs/disassembly and model-hierarchy notes. It was created without writing to any APK or device.
+
+---
+
 ## 1. Primary resources and version-sensitive boundaries
 
 | Source | Role |
